@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface Supplier {
   id: string;
@@ -78,159 +79,203 @@ export default function SupplierDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="text-center">
-          <Icons.refresh className="animate-spin h-10 w-10 text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground font-medium">Loading supplier details...</p>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading supplier details...</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error || !supplier) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4">
-        <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
-          <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
-          <h2 className="text-xl font-bold">Supplier Not Found</h2>
-          <p className="text-muted-foreground text-sm">{error || 'The requested supplier could not be located.'}</p>
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/suppliers">
-              <Icons.back className="w-4 h-4 mr-2" /> Back to Suppliers
-            </Link>
-          </Button>
-        </Card>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center px-4">
+          <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
+            <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
+            <h2 className="text-lg font-bold">Supplier Not Found</h2>
+            <p className="text-muted-foreground text-xs">{error || 'The requested supplier could not be located.'}</p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/suppliers">
+                <Icons.back className="w-4 h-4 mr-2" /> Back to Suppliers
+              </Link>
+            </Button>
+          </Card>
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in slide-up">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <Link href="/suppliers" className="text-muted-foreground hover:text-foreground text-sm font-medium inline-flex items-center gap-1 mb-2">
-            <Icons.back className="w-4 h-4" /> Back to Suppliers
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">{supplier.company_name}</h1>
-            {supplier.is_gst_supplier ? (
-              <Badge variant="success">GST Registered</Badge>
-            ) : (
-              <Badge variant="outline">Non-GST</Badge>
+    <PageContainer>
+      <PageHeader
+        title={supplier.company_name}
+        description="Vendor Profile & Procurement Terms"
+        backHref="/suppliers"
+        badge={
+          supplier.is_gst_supplier ? (
+            <Badge variant="success">GST Registered</Badge>
+          ) : (
+            <Badge variant="outline">Non-GST</Badge>
+          )
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-8 gap-1.5 text-xs">
+              <Icons.print className="w-3.5 h-3.5" /> Print / PDF
+            </Button>
+
+            {supplier.whatsapp && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
+              >
+                <a
+                  href={`https://wa.me/${supplier.whatsapp}?text=${encodeURIComponent(`Hello ${supplier.contact_person ? supplier.contact_person : supplier.company_name},\n\nRegarding purchase orders and supply.\n\nRegards,\nRainbow Digital Solutions`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Icons.share className="w-3.5 h-3.5" /> WhatsApp Message
+                </a>
+              </Button>
             )}
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDelete}
+              disabled={actionLoading}
+              className="h-8 text-xs text-muted-foreground hover:text-destructive"
+            >
+              <Icons.trash className="w-3.5 h-3.5" />
+            </Button>
           </div>
-        </div>
+        }
+      />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="destructive" onClick={handleDelete} disabled={actionLoading}>
-            <Icons.trash className="w-4 h-4 mr-1.5" /> Delete Record
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Icons.suppliers className="w-4 h-4 text-primary" /> Contact Information
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
+        {/* Contact Block */}
+        <Card className="xl:col-span-2">
+          <CardHeader className="pb-3 hidden sm:flex">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Icons.suppliers className="w-4 h-4 text-primary" /> Contact Details
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Contact Person:</span>
-              <span className="font-semibold text-foreground">{supplier.contact_person || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Phone:</span>
-              <span className="font-mono font-medium text-foreground">{supplier.phone}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">WhatsApp:</span>
-              <span className="font-mono text-foreground">{supplier.whatsapp || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Email:</span>
-              <span className="font-medium text-foreground">{supplier.email || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Address:</span>
-              <span className="font-medium text-foreground text-right max-w-[250px]">{supplier.address || '—'}</span>
+          <CardContent className="space-y-4 pt-4 sm:pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Contact Person</span>
+                <span className="font-semibold text-foreground">{supplier.contact_person || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Phone</span>
+                <span className="font-mono font-medium text-foreground">{supplier.phone}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">WhatsApp</span>
+                <span className="font-mono text-foreground">{supplier.whatsapp || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Email</span>
+                <span className="font-medium text-foreground">{supplier.email || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 sm:col-span-2">
+                <span className="text-xs text-muted-foreground">Address</span>
+                <span className="font-medium text-foreground whitespace-pre-wrap">{supplier.address || '—'}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Business & Terms Block */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Icons.purchaseOrders className="w-4 h-4 text-primary" /> Business & Financials
+          <CardHeader className="pb-3 hidden sm:flex">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Icons.purchaseOrders className="w-4 h-4 text-primary" /> Tax & Credit Terms
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">GSTIN:</span>
-              <span className="font-mono font-medium text-foreground">{supplier.gstin || '—'}</span>
+          <CardContent className="space-y-3 pt-4 sm:pt-0 text-sm">
+            <div className="flex justify-between items-center pb-2 border-b border-border/50">
+              <span className="text-muted-foreground">GSTIN</span>
+              <span className="font-mono font-semibold text-foreground">{supplier.gstin || '—'}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Default Credit Days:</span>
-              <span className="font-medium text-foreground">{supplier.default_credit_days} days</span>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Credit Term</span>
+              <span className="font-medium text-foreground">{supplier.default_credit_days} Days</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Icons.payments className="w-4 h-4 text-primary" /> Banking Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex justify-between text-sm pb-2 border-b md:border-b-0 md:pr-4">
-              <span className="text-muted-foreground">Bank Name:</span>
-              <span className="font-medium text-foreground">{supplier.bank_name || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b md:border-b-0 md:pl-4">
-              <span className="text-muted-foreground">Branch:</span>
-              <span className="font-medium text-foreground">{supplier.bank_branch || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm md:pr-4">
-              <span className="text-muted-foreground">Account Number:</span>
-              <span className="font-mono font-medium text-foreground">{supplier.bank_account_number || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm md:pl-4">
-              <span className="text-muted-foreground">IFSC Code:</span>
-              <span className="font-mono font-medium text-foreground">{supplier.bank_ifsc || '—'}</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {supplier.notes && (
-        <Card>
-          <CardHeader className="py-4">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Notes
+      {/* Bank Details */}
+      {(supplier.bank_name || supplier.bank_account_number || supplier.bank_ifsc) && (
+        <Card className="mt-4 sm:mt-6">
+          <CardHeader className="pb-3 hidden sm:flex">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Icons.payments className="w-4 h-4 text-primary" /> Banking & Settlement Details
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground italic whitespace-pre-wrap">{supplier.notes}</p>
+          <CardContent className="pt-4 sm:pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="flex flex-col gap-1 pb-2 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Bank Name</span>
+                <span className="font-medium text-foreground">{supplier.bank_name || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-2 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Branch</span>
+                <span className="font-medium text-foreground">{supplier.bank_branch || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-2 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Account Number</span>
+                <span className="font-mono font-semibold text-foreground">{supplier.bank_account_number || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">IFSC Code</span>
+                <span className="font-mono font-semibold text-foreground">{supplier.bank_ifsc || '—'}</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Purchase Order Placeholder */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Icons.receipts className="w-4 h-4 text-primary" /> Purchase History
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-center py-8 text-sm">Purchase orders and receipt history will appear here</p>
-        </CardContent>
-      </Card>
-    </div>
+      {supplier.notes && (
+        <Card className="mt-4 sm:mt-6 bg-muted/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Internal Notes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs sm:text-sm text-foreground whitespace-pre-wrap">{supplier.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Procurement Order Placeholder */}
+      <div className="mt-6 sm:mt-8">
+        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+          <Icons.receipts className="w-5 h-5 text-primary" /> Purchase History & Receipts
+        </h3>
+        <Card className="border-dashed border-2">
+          <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+            <Icons.search className="w-8 h-8 text-muted-foreground/30 mb-3" />
+            <p className="text-sm font-medium text-foreground">No purchase records available yet</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+              Purchase orders and goods receipt notes (GRN) from {supplier.company_name} will automatically appear in this section.
+            </p>
+            <Button variant="outline" size="sm" asChild className="mt-6 h-8 text-xs">
+              <Link href={`/purchase-orders/new?supplier=${supplier.id}`}>
+                <Icons.add className="w-3.5 h-3.5 mr-1" /> Create Purchase Order
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </PageContainer>
   );
 }

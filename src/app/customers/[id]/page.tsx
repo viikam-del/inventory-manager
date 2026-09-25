@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface Customer {
   id: string;
@@ -77,42 +78,44 @@ export default function CustomerDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="text-center">
-          <Icons.refresh className="animate-spin h-10 w-10 text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground font-medium">Loading customer details...</p>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading customer details...</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error || !customer) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4">
-        <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
-          <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
-          <h2 className="text-xl font-bold">Customer Not Found</h2>
-          <p className="text-muted-foreground text-sm">{error || 'The requested customer could not be located.'}</p>
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/customers">
-              <Icons.back className="w-4 h-4 mr-2" /> Back to Customers
-            </Link>
-          </Button>
-        </Card>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center px-4">
+          <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
+            <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
+            <h2 className="text-lg font-bold">Customer Not Found</h2>
+            <p className="text-muted-foreground text-xs">{error || 'The requested customer could not be located.'}</p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/customers">
+                <Icons.back className="w-4 h-4 mr-2" /> Back to Customers
+              </Link>
+            </Button>
+          </Card>
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in slide-up">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <Link href="/customers" className="text-muted-foreground hover:text-foreground text-sm font-medium inline-flex items-center gap-1 mb-2">
-            <Icons.back className="w-4 h-4" /> Back to Customers
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">{customer.company_name}</h1>
+    <PageContainer>
+      <PageHeader
+        title={customer.company_name}
+        description="Customer Account Dashboard"
+        backHref="/customers"
+        badge={
+          <div className="flex gap-1.5">
             {customer.is_gst_customer ? (
               <Badge variant="success">GST Registered</Badge>
             ) : (
@@ -120,115 +123,140 @@ export default function CustomerDetailPage() {
             )}
             {customer.is_dealer && <Badge variant="secondary">Dealer</Badge>}
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Icons.print className="w-4 h-4 mr-2" /> Print / PDF
-          </Button>
-
-          {customer.whatsapp && (
-            <Button variant="outline" size="sm" asChild className="bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30">
-              <a
-                href={`https://wa.me/${customer.whatsapp}?text=${encodeURIComponent(`Hello ${customer.contact_person ? customer.contact_person : customer.company_name},\n\nHope you are doing well!\n\nRegards,\nRainbow Digital Solutions`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Icons.share className="w-4 h-4 mr-1.5" /> WhatsApp
-              </a>
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-8 gap-1.5 text-xs">
+              <Icons.print className="w-3.5 h-3.5" /> Print / PDF
             </Button>
-          )}
 
-          <Button size="sm" variant="destructive" onClick={handleDelete} disabled={actionLoading}>
-            <Icons.trash className="w-4 h-4 mr-1.5" /> Delete Record
-          </Button>
-        </div>
-      </div>
+            {customer.whatsapp && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
+              >
+                <a
+                  href={`https://wa.me/${customer.whatsapp}?text=${encodeURIComponent(`Hello ${customer.contact_person ? customer.contact_person : customer.company_name},\n\nHope you are doing well!\n\nRegards,\nRainbow Digital Solutions`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Icons.share className="w-3.5 h-3.5" /> WhatsApp Message
+                </a>
+              </Button>
+            )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Icons.customers className="w-4 h-4 text-primary" /> Contact Information
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDelete}
+              disabled={actionLoading}
+              className="h-8 text-xs text-muted-foreground hover:text-destructive"
+            >
+              <Icons.trash className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
+        {/* Contact Block */}
+        <Card className="xl:col-span-2">
+          <CardHeader className="pb-3 hidden sm:flex">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Icons.customers className="w-4 h-4 text-primary" /> Contact Details & Identity
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Contact Person:</span>
-              <span className="font-semibold text-foreground">{customer.contact_person || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Phone:</span>
-              <span className="font-mono font-medium text-foreground">{customer.phone}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">WhatsApp:</span>
-              <span className="font-mono text-foreground">{customer.whatsapp || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Email:</span>
-              <span className="font-medium text-foreground">{customer.email || '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Address:</span>
-              <span className="font-medium text-foreground text-right max-w-[250px]">{customer.address || '—'}</span>
+          <CardContent className="space-y-4 pt-4 sm:pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Contact Person</span>
+                <span className="font-semibold text-foreground">{customer.contact_person || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Phone</span>
+                <span className="font-mono font-medium text-foreground">{customer.phone}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">WhatsApp</span>
+                <span className="font-mono text-foreground">{customer.whatsapp || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">Email</span>
+                <span className="font-medium text-foreground">{customer.email || '—'}</span>
+              </div>
+              <div className="flex flex-col gap-1 sm:col-span-2">
+                <span className="text-xs text-muted-foreground">Address</span>
+                <span className="font-medium text-foreground whitespace-pre-wrap">{customer.address || '—'}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Financial Block */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Icons.payments className="w-4 h-4 text-primary" /> GST & Financial Details
+          <CardHeader className="pb-3 hidden sm:flex">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Icons.payments className="w-4 h-4 text-primary" /> Billing & Credit
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">GSTIN:</span>
-              <span className="font-mono font-medium text-foreground">{customer.gstin || '—'}</span>
+          <CardContent className="space-y-3 pt-4 sm:pt-0 text-sm">
+            <div className="flex justify-between items-center pb-2 border-b border-border/50">
+              <span className="text-muted-foreground">GSTIN</span>
+              <span className="font-mono font-semibold text-foreground">{customer.gstin || '—'}</span>
             </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Credit Limit:</span>
+            <div className="flex justify-between items-center pb-2 border-b border-border/50">
+              <span className="text-muted-foreground">Credit Limit</span>
               <span className="font-bold text-foreground">
-                {customer.credit_limit ? `₹${customer.credit_limit.toLocaleString('en-IN')}` : <span className="text-muted-foreground italic">No Limit</span>}
+                {customer.credit_limit ? `₹${customer.credit_limit.toLocaleString('en-IN')}` : <span className="text-muted-foreground italic font-normal text-xs">No Limit</span>}
               </span>
             </div>
-            <div className="flex justify-between text-sm pb-2 border-b">
-              <span className="text-muted-foreground">Opening Balance:</span>
-              <span className="font-semibold text-foreground">₹{customer.opening_balance.toLocaleString('en-IN')}</span>
+            <div className="flex justify-between items-center pb-2 border-b border-border/50">
+              <span className="text-muted-foreground">Opening Balance</span>
+              <span className="font-mono font-semibold text-foreground">₹{customer.opening_balance.toLocaleString('en-IN')}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Default Due Days:</span>
-              <span className="font-medium text-foreground">{customer.default_due_days} days</span>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Due Term</span>
+              <span className="font-medium text-foreground">{customer.default_due_days} Days</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {customer.notes && (
-        <Card>
-          <CardHeader className="py-4">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-              Notes
+        <Card className="mt-4 sm:mt-6 bg-muted/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Internal Notes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground italic whitespace-pre-wrap">{customer.notes}</p>
+            <p className="text-xs sm:text-sm text-foreground whitespace-pre-wrap">{customer.notes}</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Ledger Placeholder */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Icons.receipts className="w-4 h-4 text-primary" /> Account Ledger
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-center py-8 text-sm">Sales orders and payment transaction history will appear here</p>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Ledger UI Stub */}
+      <div className="mt-6 sm:mt-8">
+        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+          <Icons.receipts className="w-5 h-5 text-primary" /> Account Ledger
+        </h3>
+        <Card className="border-dashed border-2">
+          <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+            <Icons.search className="w-8 h-8 text-muted-foreground/30 mb-3" />
+            <p className="text-sm font-medium text-foreground">No transactions available yet</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+              Sales orders and payment history linked to {customer.company_name} will automatically appear in this section.
+            </p>
+            <Button variant="outline" size="sm" asChild className="mt-6 h-8 text-xs">
+              <Link href={`/payments/new?customer=${customer.id}`}>
+                <Icons.add className="w-3.5 h-3.5 mr-1" /> Add Payment Entry
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </PageContainer>
   );
 }

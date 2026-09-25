@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface POLine {
   id: string;
@@ -123,7 +124,7 @@ export default function PurchaseOrderDetailPage() {
   };
 
   const handleDeletePO = async () => {
-    if (!confirm('Delete this Purchase Order?')) return;
+    if (!confirm('Delete this Purchase Order? This will move it to the archive.')) return;
     setActionLoading(true);
     try {
       const { error: deleteError } = await supabase
@@ -141,29 +142,33 @@ export default function PurchaseOrderDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="text-center">
-          <Icons.refresh className="animate-spin h-10 w-10 text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground font-medium">Loading purchase order details...</p>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading purchase order details...</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error || !po) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4">
-        <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
-          <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
-          <h2 className="text-xl font-bold">Purchase Order Not Found</h2>
-          <p className="text-muted-foreground text-sm">{error || 'The requested purchase order could not be located.'}</p>
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/purchase-orders">
-              <Icons.back className="w-4 h-4 mr-2" /> Back to Purchase Orders
-            </Link>
-          </Button>
-        </Card>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
+            <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
+            <h2 className="text-lg font-bold">Purchase Order Not Found</h2>
+            <p className="text-muted-foreground text-xs">{error || 'The requested purchase order could not be located.'}</p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/purchase-orders">
+                <Icons.back className="w-4 h-4 mr-2" /> Back to Purchase Orders
+              </Link>
+            </Button>
+          </Card>
+        </div>
+      </PageContainer>
     );
   }
 
@@ -173,150 +178,183 @@ export default function PurchaseOrderDetailPage() {
 
   const getStatusBadge = (status: PurchaseOrder['status']) => {
     switch (status) {
-      case 'Received': return <Badge variant="success"><Icons.success className="w-3 h-3 mr-1" /> Received</Badge>;
-      case 'Partially Received': return <Badge variant="warning"><Icons.in className="w-3 h-3 mr-1" /> Partial Receipt</Badge>;
-      case 'Ordered': return <Badge variant="info"><Icons.document className="w-3 h-3 mr-1" /> Ordered</Badge>;
-      case 'Cancelled': return <Badge variant="destructive"><Icons.close className="w-3 h-3 mr-1" /> Cancelled</Badge>;
-      default: return <Badge variant="outline">{status}</Badge>;
+      case 'Received':
+        return <Badge variant="success" className="gap-1"><Icons.success className="w-3 h-3" /> Received</Badge>;
+      case 'Partially Received':
+        return <Badge variant="warning" className="gap-1"><Icons.in className="w-3 h-3" /> Partial Receipt</Badge>;
+      case 'Ordered':
+        return <Badge variant="info" className="gap-1"><Icons.document className="w-3 h-3" /> Ordered</Badge>;
+      case 'Cancelled':
+        return <Badge variant="destructive" className="gap-1"><Icons.close className="w-3 h-3" /> Cancelled</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
+  const whatsappMessage = encodeURIComponent(
+    `*Purchase Order: ${po.po_number}*\nStatus: ${po.status}\nSupplier: ${po.suppliers?.company_name || 'N/A'}\nTotal: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(po.order_date).toLocaleDateString('en-IN')}\n\n*Ordered Items:*\n${lines.map(l => `• ${l.quantity}x ${l.products?.name}`).join('\n')}`
+  );
+
   return (
-    <div className="space-y-6 animate-in slide-up">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <Link href="/purchase-orders" className="text-muted-foreground hover:text-foreground text-sm font-medium inline-flex items-center gap-1 mb-2 print:hidden">
-            <Icons.back className="w-4 h-4" /> Back to Purchase Orders
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">{po.po_number}</h1>
-            {getStatusBadge(po.status)}
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeader
+        title={po.po_number}
+        description={`Procurement order issued to ${po.suppliers?.company_name || 'Supplier'}`}
+        backHref="/purchase-orders"
+        badge={getStatusBadge(po.status)}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-8 gap-1.5 text-xs">
+              <Icons.print className="w-3.5 h-3.5" /> Print / PDF
+            </Button>
 
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Icons.print className="w-4 h-4 mr-2" /> Print / PDF
-          </Button>
-
-          <Button variant="outline" size="sm" asChild className="bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30">
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(`*Purchase Order: ${po.po_number}*\nStatus: ${po.status}\nSupplier: ${po.suppliers?.company_name || 'N/A'}\nTotal: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(po.order_date).toLocaleDateString('en-IN')}\n\n*Ordered Items:*\n${lines.map(l => `• ${l.quantity}x ${l.products?.name}`).join('\n')}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
-              <Icons.share className="w-4 h-4 mr-1.5" /> WhatsApp
-            </a>
-          </Button>
+              <a
+                href={`https://wa.me/?text=${whatsappMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icons.share className="w-3.5 h-3.5" /> Share WhatsApp
+              </a>
+            </Button>
 
-          {po.status !== 'Received' && po.status !== 'Cancelled' && (
-            <>
-              <Button size="sm" variant="success" asChild>
-                <Link href={`/receipts/new?po_id=${po.id}`}>
-                  <Icons.in className="w-4 h-4 mr-1.5" /> Receive Stock (GRN)
-                </Link>
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleCancelPO} disabled={actionLoading} className="text-destructive border-destructive/20 hover:bg-destructive/10">
-                Cancel
-              </Button>
-            </>
-          )}
+            {po.status !== 'Received' && po.status !== 'Cancelled' && (
+              <>
+                <Button size="sm" variant="success" asChild className="h-8 gap-1.5 text-xs">
+                  <Link href={`/receipts/new?po_id=${po.id}`}>
+                    <Icons.in className="w-3.5 h-3.5" /> Receive Stock (GRN)
+                  </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelPO}
+                  disabled={actionLoading}
+                  className="h-8 text-xs text-destructive border-destructive/20 hover:bg-destructive/10"
+                >
+                  Cancel
+                </Button>
+              </>
+            )}
 
-          <Button size="sm" variant="destructive" onClick={handleDeletePO} disabled={actionLoading}>
-            <Icons.trash className="w-4 h-4 mr-1.5" /> Delete
-          </Button>
-        </div>
-      </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDeletePO}
+              disabled={actionLoading}
+              className="h-8 text-xs text-muted-foreground hover:text-destructive"
+            >
+              <Icons.trash className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        }
+      />
 
       {/* Meta Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {/* Supplier Card */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <Icons.suppliers className="w-4 h-4 text-primary" /> Supplier Details
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-lg font-bold text-foreground">{po.suppliers?.company_name || 'Unknown Supplier'}</p>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Icons.phone className="w-4 h-4" /> {po.suppliers?.phone || '—'}
+          <CardContent className="space-y-2.5 text-sm">
+            <p className="text-base font-bold text-foreground">{po.suppliers?.company_name || 'Unknown Supplier'}</p>
+            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+              <Icons.phone className="w-3.5 h-3.5 shrink-0" />
+              <span>{po.suppliers?.phone || 'No phone provided'}</span>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Icons.email className="w-4 h-4" /> {po.suppliers?.email || '—'}
-            </div>
+            {po.suppliers?.email && (
+              <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                <Icons.email className="w-3.5 h-3.5 shrink-0" />
+                <span>{po.suppliers.email}</span>
+              </div>
+            )}
             {po.suppliers?.gstin && (
-              <div className="text-sm flex justify-between font-mono pt-2 border-t">
+              <div className="text-xs flex justify-between font-mono pt-2 border-t border-border/60">
                 <span className="text-muted-foreground">GSTIN:</span>
-                <span className="font-bold">{po.suppliers.gstin}</span>
+                <span className="font-semibold text-foreground">{po.suppliers.gstin}</span>
               </div>
             )}
           </CardContent>
         </Card>
 
+        {/* Logistics Card */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Icons.delivery className="w-4 h-4 text-primary" /> Logistics & Timeline
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Icons.delivery className="w-4 h-4 text-primary" /> Logistics & Schedule
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm">
+          <CardContent className="space-y-2.5 text-xs sm:text-sm">
+            <div className="flex justify-between">
               <span className="text-muted-foreground">Order Date:</span>
-              <span className="font-medium text-foreground">{new Date(po.order_date).toLocaleDateString('en-IN')}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Expected Delivery:</span>
               <span className="font-medium text-foreground">
-                {po.expected_delivery_date ? new Date(po.expected_delivery_date).toLocaleDateString('en-IN') : 'Not specified'}
+                {new Date(po.order_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
             </div>
-            <div className="flex justify-between text-sm pt-2 border-t">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Expected Delivery:</span>
+              <span className="font-medium text-foreground">
+                {po.expected_delivery_date
+                  ? new Date(po.expected_delivery_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                  : 'Not specified'}
+              </span>
+            </div>
+            <div className="flex justify-between pt-2 border-t border-border/60">
               <span className="text-muted-foreground">Freight Charges:</span>
-              <span className="font-semibold text-foreground">₹{Number(po.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              <span className="font-mono font-semibold text-foreground">
+                ₹{Number(po.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Order Lines */}
+      {/* Order Lines Table */}
       <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Icons.inventory className="w-5 h-5 text-primary" /> Purchase Order Lines
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Icons.inventory className="w-4 h-4 text-primary" /> Line Items ({lines.length})
           </CardTitle>
         </CardHeader>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted border-b text-muted-foreground font-medium">
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead className="bg-muted/60 border-y border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-3">Product Name</th>
-                <th className="px-6 py-3">SKU</th>
-                <th className="px-6 py-3 text-right">Quantity</th>
-                <th className="px-6 py-3 text-right">Unit Cost</th>
-                <th className="px-6 py-3 text-right">Input GST</th>
-                <th className="px-6 py-3 text-right">Total Cost</th>
+                <th className="px-5 py-3">Product Name</th>
+                <th className="px-5 py-3">SKU</th>
+                <th className="px-5 py-3 text-right">Quantity</th>
+                <th className="px-5 py-3 text-right">Unit Cost</th>
+                <th className="px-5 py-3 text-right">Input GST</th>
+                <th className="px-5 py-3 text-right">Total Cost</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/50">
               {lines.map((l) => (
-                <tr key={l.id} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4 font-semibold text-foreground">
+                <tr key={l.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-5 py-3.5 font-medium text-foreground">
                     {l.products?.name || 'Unknown Product'}
                   </td>
-                  <td className="px-6 py-4 text-muted-foreground font-mono text-xs">
+                  <td className="px-5 py-3.5 text-muted-foreground font-mono text-xs">
                     {l.products?.sku_code || '—'}
                   </td>
-                  <td className="px-6 py-4 text-right font-bold">
+                  <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
                     {l.quantity} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
                   </td>
-                  <td className="px-6 py-4 text-right text-muted-foreground">
+                  <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
                     ₹{Number(l.unit_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="px-6 py-4 text-right text-muted-foreground">
+                  <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
                     ₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="px-6 py-4 text-right font-bold text-foreground">
+                  <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
                     ₹{(Number(l.quantity * l.unit_cost) + Number(l.gst_amount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
@@ -326,66 +364,75 @@ export default function PurchaseOrderDetailPage() {
         </div>
 
         {/* Totals Summary */}
-        <div className="p-6 bg-muted/30 border-t space-y-2 text-right">
-          <div className="text-sm text-muted-foreground">
-            Subtotal: <span className="font-semibold text-foreground">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+        <div className="p-4 sm:p-6 bg-muted/20 border-t border-border/60 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
+          <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+            <span>Items Subtotal:</span>
+            <span className="font-mono font-medium text-foreground">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
-          <div className="text-sm text-muted-foreground">
-            Total Input GST (ITC): <span className="font-semibold text-foreground">₹{totalGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+            <span>Total Input GST (ITC):</span>
+            <span className="font-mono font-medium text-foreground">₹{totalGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           {Number(po.delivery_charges) > 0 && (
-            <div className="text-sm text-muted-foreground">
-              Freight / Charges: <span className="font-semibold text-foreground">₹{Number(po.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+              <span>Freight Charges:</span>
+              <span className="font-mono font-medium text-foreground">₹{Number(po.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
           )}
-          <div className="text-xl font-black text-foreground pt-2 border-t border-border inline-block">
-            Grand Total: ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          <div className="flex justify-between w-full max-w-xs pt-2 border-t border-border text-base font-bold text-foreground">
+            <span>Grand Total:</span>
+            <span className="font-mono text-primary">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
         </div>
       </Card>
 
-      {/* Notes */}
+      {/* Notes Card */}
       {po.notes && (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Purchase Order Notes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{po.notes}</p>
+            <p className="text-xs sm:text-sm text-muted-foreground whitespace-pre-wrap">{po.notes}</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Receipts Associated with this PO */}
+      {/* Goods Received Notes (GRN) */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="flex items-center gap-2">
-            <Icons.receipts className="w-5 h-5 text-primary" /> Goods Received Notes (GRN)
-          </CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Icons.receipts className="w-4 h-4 text-primary" /> Goods Received Notes (GRN)
+            </CardTitle>
+            <CardDescription className="text-xs">Incoming shipments received against this purchase order</CardDescription>
+          </div>
           {po.status !== 'Received' && po.status !== 'Cancelled' && (
-            <Button size="sm" variant="ghost" asChild>
+            <Button size="sm" variant="outline" asChild className="h-8 gap-1 text-xs">
               <Link href={`/receipts/new?po_id=${po.id}`}>
-                <Icons.add className="w-4 h-4 mr-1" /> Create GRN
+                <Icons.add className="w-3.5 h-3.5" /> Create GRN
               </Link>
             </Button>
           )}
         </CardHeader>
         <CardContent>
           {receipts.length > 0 ? (
-            <div className="divide-y border-t mt-2">
+            <div className="divide-y divide-border/60 border-t border-border/60">
               {receipts.map((r) => (
-                <div key={r.id} className="py-3 flex justify-between items-center">
+                <div key={r.id} className="py-3 flex justify-between items-center text-xs sm:text-sm">
                   <div>
-                    <span className="font-bold text-foreground">{r.receipt_number}</span>
-                    <span className="text-xs text-muted-foreground ml-3">{new Date(r.receipt_date).toLocaleDateString('en-IN')}</span>
+                    <span className="font-mono font-bold text-foreground">{r.receipt_number}</span>
+                    <span className="text-xs text-muted-foreground ml-3">
+                      {new Date(r.receipt_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="success">{r.status}</Badge>
-                    <Button variant="outline" size="sm" asChild>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="success" className="text-[10px]">{r.status}</Badge>
+                    <Button variant="outline" size="sm" asChild className="h-7 text-xs">
                       <Link href={`/receipts/${r.id}`}>
-                        View Details <Icons.forward className="w-3.5 h-3.5 ml-1" />
+                        View Details <Icons.forward className="w-3 h-3 ml-1" />
                       </Link>
                     </Button>
                   </div>
@@ -393,10 +440,12 @@ export default function PurchaseOrderDetailPage() {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm italic py-4 text-center">No goods receipts recorded for this PO yet.</p>
+            <div className="text-center py-6 text-muted-foreground">
+              <p className="text-xs italic">No goods receipt notes recorded for this purchase order yet.</p>
+            </div>
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

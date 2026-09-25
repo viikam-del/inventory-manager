@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { Icons } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 export default function NewSupplierPage() {
   const [formData, setFormData] = useState({
@@ -39,7 +43,12 @@ export default function NewSupplierPage() {
     setLoading(true);
     setError('');
 
-    const { error: supabaseError } = await supabase.from('suppliers').insert([formData]);
+    const data = {
+      ...formData,
+      default_credit_days: Number(formData.default_credit_days) || 0
+    };
+
+    const { error: supabaseError } = await supabase.from('suppliers').insert([data]);
 
     if (supabaseError) {
       setError(supabaseError.message);
@@ -50,216 +59,264 @@ export default function NewSupplierPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <Link href="/suppliers" className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-          ← Back to Suppliers
-        </Link>
-        <h1 className="text-3xl font-bold text-gray-800 mt-2">Add New Supplier</h1>
-        <p className="text-gray-600 mt-1">Fill in the details to add a new supplier</p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Add New Supplier"
+        description="Fill in the vendor details, procurement terms, and banking information"
+        backHref="/suppliers"
+      />
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
         {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md">{error}</div>
+          <Card className="border-destructive/30 bg-destructive/5 text-destructive p-4">
+            <div className="flex items-center gap-2 font-medium text-sm">
+              <Icons.warning className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          </Card>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Company Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              name="company_name"
-              value={formData.company_name}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Contact Person</label>
-            <input
-              type="text"
-              name="contact_person"
-              value={formData.contact_person}
-              onChange={handleChange}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Phone <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="tel"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">WhatsApp</label>
-            <input
-              type="tel"
-              name="whatsapp"
-              value={formData.whatsapp}
-              onChange={handleChange}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              GST Status
-            </label>
-            <div className="flex items-center space-x-4">
-              <label className="flex items-center">
+        <Card>
+          <CardHeader>
+            <CardTitle>Basic Information</CardTitle>
+            <CardDescription>Company identity and communication details</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Company Name <span className="text-destructive">*</span>
+                </label>
                 <input
-                  type="checkbox"
-                  name="is_gst_supplier"
-                  checked={formData.is_gst_supplier}
+                  type="text"
+                  name="company_name"
+                  value={formData.company_name}
                   onChange={handleChange}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
-                <span className="ml-2 text-gray-700">GST Registered</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Contact Person
+                </label>
+                <input
+                  type="text"
+                  name="contact_person"
+                  value={formData.contact_person}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Phone <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  WhatsApp
+                </label>
+                <input
+                  type="tel"
+                  name="whatsapp"
+                  value={formData.whatsapp}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Address
+              </label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleChange}
+                rows={3}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tax & Credit Terms</CardTitle>
+            <CardDescription>GST details and vendor payment agreements</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                id="is_gst_supplier"
+                name="is_gst_supplier"
+                checked={formData.is_gst_supplier}
+                onChange={handleChange}
+                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <label htmlFor="is_gst_supplier" className="text-sm font-medium text-foreground cursor-pointer group-hover:text-primary transition-colors">
+                GST Registered Vendor
               </label>
             </div>
-          </div>
-        </div>
 
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Address</label>
-          <textarea
-            name="address"
-            value={formData.address}
-            onChange={handleChange}
-            rows={3}
-            className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
-        </div>
+            {formData.is_gst_supplier && (
+              <div className="space-y-1.5 max-w-sm">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  GSTIN <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="gstin"
+                  value={formData.gstin}
+                  onChange={handleChange}
+                  required={formData.is_gst_supplier}
+                  maxLength={15}
+                  placeholder="e.g., 27AAACCA23..."
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            )}
 
-        {formData.is_gst_supplier && (
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">GSTIN</label>
-            <input
-              type="text"
-              name="gstin"
-              value={formData.gstin}
-              onChange={handleChange}
-              maxLength={15}
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              placeholder="e.g., 19ABCDE1234F1Z5"
-            />
-          </div>
-        )}
-
-        {/* Bank Details */}
-        <div className="border-t border-gray-200 pt-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Bank Details (Optional)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Bank Name</label>
+            <div className="space-y-1.5 max-w-xs">
+              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Default Credit Days
+              </label>
               <input
-                type="text"
-                name="bank_name"
-                value={formData.bank_name}
+                type="number"
+                name="default_credit_days"
+                value={formData.default_credit_days}
                 onChange={handleChange}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                min={0}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Branch</label>
-              <input
-                type="text"
-                name="bank_branch"
-                value={formData.bank_branch}
-                onChange={handleChange}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank Details (Optional)</CardTitle>
+            <CardDescription>Used for NEFT/RTGS payouts and vendor settlements</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Bank Name
+                </label>
+                <input
+                  type="text"
+                  name="bank_name"
+                  value={formData.bank_name}
+                  onChange={handleChange}
+                  placeholder="e.g., HDFC Bank, ICICI Bank"
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Branch
+                </label>
+                <input
+                  type="text"
+                  name="bank_branch"
+                  value={formData.bank_branch}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Account Number
+                </label>
+                <input
+                  type="text"
+                  name="bank_account_number"
+                  value={formData.bank_account_number}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  IFSC Code
+                </label>
+                <input
+                  type="text"
+                  name="bank_ifsc"
+                  value={formData.bank_ifsc}
+                  onChange={handleChange}
+                  placeholder="e.g., HDFC0001234"
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Account Number</label>
-              <input
-                type="text"
-                name="bank_account_number"
-                value={formData.bank_account_number}
+            <div className="space-y-1.5 pt-2">
+              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Notes / Terms
+              </label>
+              <textarea
+                name="notes"
+                value={formData.notes}
                 onChange={handleChange}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                rows={2}
+                placeholder="Internal references, supply catalogue notes..."
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">IFSC Code</label>
-              <input
-                type="text"
-                name="bank_ifsc"
-                value={formData.bank_ifsc}
-                onChange={handleChange}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Default Credit Days</label>
-          <input
-            type="number"
-            name="default_credit_days"
-            value={formData.default_credit_days}
-            onChange={handleChange}
-            min={0}
-            className="w-full max-w-xs px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Notes</label>
-          <textarea
-            name="notes"
-            value={formData.notes}
-            onChange={handleChange}
-            rows={3}
-            className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
-        </div>
-
-        <div className="flex justify-end space-x-4 pt-4">
-          <Link
-            href="/suppliers"
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium disabled:bg-blue-300"
-          >
-            {loading ? 'Creating...' : 'Create Supplier'}
-          </button>
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" asChild>
+            <Link href="/suppliers">Cancel</Link>
+          </Button>
+          <Button type="submit" disabled={loading}>
+            {loading ? (
+              <>
+                <Icons.refresh className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Icons.add className="w-3.5 h-3.5 mr-1.5" />
+                Create Supplier
+              </>
+            )}
+          </Button>
         </div>
       </form>
-    </div>
+    </PageContainer>
   );
 }

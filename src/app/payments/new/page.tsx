@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { Icons } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface Customer {
   id: string;
@@ -85,125 +89,156 @@ export default function NewPaymentPage() {
 
   if (fetching) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading form data...</p>
+          </div>
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <Link href="/payments" className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-          ← Back to Payments
-        </Link>
-        <h1 className="text-3xl font-bold text-gray-800 mt-2">Record Customer Payment</h1>
-        <p className="text-gray-600 mt-1">Enter details of a collection received from a customer</p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Record Customer Payment"
+        description="Enter details of a collection or settlement entry received from a customer"
+        backHref="/payments"
+      />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
         {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md">{error}</div>
+          <Card className="border-destructive/30 bg-destructive/5 text-destructive p-4">
+            <div className="flex items-center gap-2 font-medium text-sm">
+              <Icons.warning className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          </Card>
         )}
 
-        <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Customer *</label>
-              <select
-                value={formData.customer_id}
-                onChange={e => setFormData({ ...formData, customer_id: e.target.value })}
-                required
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="">Select Customer</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.company_name}
-                  </option>
-                ))}
-              </select>
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Details</CardTitle>
+            <CardDescription>Select customer, specify payment method, and amount</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Customer <span className="text-destructive">*</span>
+                </label>
+                <select
+                  value={formData.customer_id}
+                  onChange={e => setFormData({ ...formData, customer_id: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Select Customer...</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.company_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Amount (₹) <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.amount}
+                  onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                  required
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono font-semibold text-primary"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Payment Date <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.payment_date}
+                  onChange={e => setFormData({ ...formData, payment_date: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Payment Method <span className="text-destructive">*</span>
+                </label>
+                <select
+                  value={formData.payment_method}
+                  onChange={e => setFormData({ ...formData, payment_method: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Reference / Transaction ID
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. UTR / UPI Ref # / Cheque No."
+                  value={formData.reference_number}
+                  onChange={e => setFormData({ ...formData, reference_number: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Amount (₹) *</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.amount}
-                onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                required
-                placeholder="0.00"
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Notes / Internal Remarks
+              </label>
+              <textarea
+                rows={3}
+                value={formData.notes}
+                onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Any additional details about this payment receipt..."
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Payment Date *</label>
-              <input
-                type="date"
-                value={formData.payment_date}
-                onChange={e => setFormData({ ...formData, payment_date: e.target.value })}
-                required
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Payment Method *</label>
-              <select
-                value={formData.payment_method}
-                onChange={e => setFormData({ ...formData, payment_method: e.target.value })}
-                required
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="Cash">Cash</option>
-                <option value="UPI">UPI</option>
-                <option value="Cheque">Cheque</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-              </select>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Reference / Transaction ID</label>
-              <input
-                type="text"
-                placeholder="UPI ID, Cheque No, or Bank Ref #"
-                value={formData.reference_number}
-                onChange={e => setFormData({ ...formData, reference_number: e.target.value })}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Notes</label>
-            <textarea
-              rows={3}
-              value={formData.notes}
-              onChange={e => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Any additional details about the payment..."
-              className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end space-x-4">
-          <Link
-            href="/payments"
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium disabled:bg-blue-300"
-          >
-            {loading ? 'Recording Payment...' : 'Save Payment'}
-          </button>
+        <div className="flex items-center justify-end gap-3">
+          <Button variant="outline" asChild>
+            <Link href="/payments">
+              Cancel
+            </Link>
+          </Button>
+          <Button type="submit" disabled={loading}>
+            {loading ? (
+              <>
+                <Icons.refresh className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                Recording Payment...
+              </>
+            ) : (
+              <>
+                <Icons.add className="w-3.5 h-3.5 mr-1.5" />
+                Save Payment Entry
+              </>
+            )}
+          </Button>
         </div>
       </form>
-    </div>
+    </PageContainer>
   );
 }

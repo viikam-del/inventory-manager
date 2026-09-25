@@ -37,7 +37,14 @@ import {
   Building,
   MapPin,
   Barcode,
-  Share2
+  Share2,
+  Sun,
+  Moon,
+  Bell,
+  SlidersHorizontal,
+  Command,
+  HelpCircle,
+  FolderTree
 } from 'lucide-react';
 
 export const Icons = {
@@ -87,4 +94,11 @@ export const Icons = {
   trendUp: TrendingUp,
   trendDown: TrendingDown,
   undo: RotateCcw,
+  sun: Sun,
+  moon: Moon,
+  bell: Bell,
+  command: Command,
+  filter: SlidersHorizontal,
+  help: HelpCircle,
+  categories: FolderTree,
 };

@@ -7,7 +7,8 @@ import Link from 'next/link';
 import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface Payment {
   id: string;
@@ -57,7 +58,7 @@ export default function PaymentDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm('Are you sure you want to delete this payment record?')) return;
+    if (!confirm('Are you sure you want to delete this payment record? This will move it to the archive.')) return;
 
     setActionLoading(true);
     try {
@@ -76,29 +77,33 @@ export default function PaymentDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center">
-        <div className="text-center">
-          <Icons.refresh className="animate-spin h-10 w-10 text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground font-medium">Loading payment details...</p>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading payment details...</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
   if (error || !payment) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center px-4">
-        <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
-          <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
-          <h2 className="text-xl font-bold">Payment Not Found</h2>
-          <p className="text-muted-foreground text-sm">{error || 'The requested payment could not be located.'}</p>
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/payments">
-              <Icons.back className="w-4 h-4 mr-2" /> Back to Payments
-            </Link>
-          </Button>
-        </Card>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <Card className="max-w-md w-full border-destructive/20 text-center p-6 space-y-4">
+            <Icons.warning className="h-10 w-10 text-destructive mx-auto" />
+            <h2 className="text-lg font-bold">Payment Not Found</h2>
+            <p className="text-muted-foreground text-xs">{error || 'The requested payment could not be located.'}</p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/payments">
+                <Icons.back className="w-4 h-4 mr-2" /> Back to Payments
+              </Link>
+            </Button>
+          </Card>
+        </div>
+      </PageContainer>
     );
   }
 
@@ -112,75 +117,87 @@ export default function PaymentDetailPage() {
     }
   };
 
+  const whatsappMessage = encodeURIComponent(
+    `*Payment Receipt*\nCustomer: ${payment.customers?.company_name || 'Customer'}\nAmount Received: ₹${Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(payment.payment_date).toLocaleDateString('en-IN')}\nPayment Mode: ${payment.payment_method}\nRef/UTR: ${payment.reference_number || 'N/A'}\n\nThank you for your payment!`
+  );
+
   return (
-    <div className="space-y-6 animate-in slide-up">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <Link href="/payments" className="text-muted-foreground hover:text-foreground text-sm font-medium inline-flex items-center gap-1 mb-2 print:hidden">
-            <Icons.back className="w-4 h-4" /> Back to Payments
-          </Link>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">Payment Details</h1>
-            {getMethodBadge(payment.payment_method)}
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeader
+        title={`Payment from ${payment.customers?.company_name || 'Unknown'}`}
+        description={`Recorded on ${new Date(payment.payment_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+        backHref="/payments"
+        badge={getMethodBadge(payment.payment_method)}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => window.print()} className="h-8 gap-1.5 text-xs">
+              <Icons.print className="w-3.5 h-3.5" /> Print / PDF
+            </Button>
 
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Icons.print className="w-4 h-4 mr-2" /> Print / PDF
-          </Button>
-
-          <Button variant="outline" size="sm" asChild className="bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30">
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(`*Payment Receipt*\nCustomer: ${payment.customers?.company_name || 'Customer'}\nAmount Received: ₹${Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(payment.payment_date).toLocaleDateString('en-IN')}\nPayment Mode: ${payment.payment_method}\nRef/UTR: ${payment.reference_number || 'N/A'}\n\nThank you for your payment!`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
-              <Icons.share className="w-4 h-4 mr-1.5" /> WhatsApp
-            </a>
-          </Button>
+              <a
+                href={`https://wa.me/?text=${whatsappMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icons.share className="w-3.5 h-3.5" /> Share WhatsApp
+              </a>
+            </Button>
 
-          <Button size="sm" variant="destructive" onClick={handleDelete} disabled={actionLoading}>
-            <Icons.trash className="w-4 h-4 mr-1.5" /> Delete Record
-          </Button>
-        </div>
-      </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDelete}
+              disabled={actionLoading}
+              className="h-8 text-xs text-muted-foreground hover:text-destructive"
+            >
+              <Icons.trash className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        }
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <Icons.customers className="w-4 h-4 text-primary" /> Customer & Reference
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex justify-between text-sm pb-2 border-b">
+          <CardContent className="space-y-2.5 text-xs sm:text-sm">
+            <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Customer:</span>
-              <span className="font-bold text-foreground">
+              <span className="font-semibold text-foreground">
                 <Link href={`/customers/${payment.customer_id}`} className="hover:text-primary hover:underline">
                   {payment.customers?.company_name || 'Unknown Customer'}
                 </Link>
               </span>
             </div>
 
-            <div className="flex justify-between text-sm pb-2 border-b">
+            <div className="flex justify-between items-center pt-2 border-t border-border/60">
               <span className="text-muted-foreground">Payment Date:</span>
-              <span className="font-medium text-foreground">{new Date(payment.payment_date).toLocaleDateString('en-IN')}</span>
+              <span className="font-medium text-foreground">
+                {new Date(payment.payment_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
             </div>
 
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between items-center pt-2 border-t border-border/60">
               <span className="text-muted-foreground">Reference / UTR Number:</span>
               <span className="font-mono font-medium text-foreground">{payment.reference_number || '—'}</span>
             </div>
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6 flex flex-col justify-center min-h-[120px]">
               <p className="text-xs font-semibold uppercase tracking-wider text-primary mb-2">Amount Received</p>
-              <p className="text-4xl font-black text-foreground">
+              <p className="text-3xl sm:text-4xl font-black text-foreground">
                 ₹{Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
             </CardContent>
@@ -188,18 +205,18 @@ export default function PaymentDetailPage() {
 
           {payment.notes && (
             <Card>
-              <CardHeader className="py-4">
-                <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Notes
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground italic whitespace-pre-wrap">{payment.notes}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground whitespace-pre-wrap">{payment.notes}</p>
               </CardContent>
             </Card>
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -4,6 +4,11 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { Icons } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface Supplier {
   id: string;
@@ -261,237 +266,293 @@ function NewReceiptForm() {
 
   if (fetching) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading receipt setup data...</p>
+          </div>
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <Link href="/receipts" className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-          ← Back to Receipts
-        </Link>
-        <h1 className="text-3xl font-bold text-gray-800 mt-2">New Goods Received Note (GRN)</h1>
-        <p className="text-gray-600 mt-1">Receive inbound stock into inventory and update stock levels</p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Create Goods Received Note (GRN)"
+        description="Verify inbound shipment from vendor, record inspection quantities, and automatically increment live stock"
+        backHref="/receipts"
+        badge={
+          <Badge variant="secondary" className="font-mono text-[11px]">
+            {formData.receipt_number}
+          </Badge>
+        }
+      />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
-          <div className="bg-red-50 text-red-600 p-4 rounded-md">{error}</div>
+          <Card className="border-destructive/30 bg-destructive/5 text-destructive p-4">
+            <div className="flex items-center gap-2 font-medium text-sm">
+              <Icons.warning className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          </Card>
         )}
 
-        <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-          <h2 className="text-lg font-semibold text-gray-800">Receipt Header</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">GRN Number *</label>
-              <input
-                type="text"
-                value={formData.receipt_number}
-                onChange={e => setFormData({ ...formData, receipt_number: e.target.value })}
-                required
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Supplier</label>
-              <select
-                value={formData.supplier_id}
-                onChange={e => setFormData({ ...formData, supplier_id: e.target.value })}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="">Select Supplier (Optional)</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.company_name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Received Date *</label>
-              <input
-                type="date"
-                value={formData.receipt_date}
-                onChange={e => setFormData({ ...formData, receipt_date: e.target.value })}
-                required
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Delivery / Freight Charges (₹)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.delivery_charges}
-                onChange={e => setFormData({ ...formData, delivery_charges: parseFloat(e.target.value) || 0 })}
-                className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Received Items */}
-        <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-800">Items Received</h2>
-            <button
-              type="button"
-              onClick={addLine}
-              className="text-sm px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md font-medium hover:bg-blue-100 transition-colors"
-            >
-              + Add Item
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <th className="py-2 pr-4 min-w-[200px]">Product</th>
-                  <th className="py-2 px-4 w-28">Qty Received</th>
-                  <th className="py-2 px-4 w-32">Unit Cost (₹)</th>
-                  <th className="py-2 px-4 w-24">GST %</th>
-                  <th className="py-2 px-4 w-28">GST (₹)</th>
-                  <th className="py-2 px-4 w-32 text-right">Line Total</th>
-                  <th className="py-2 pl-4 w-12"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {lines.map((line, idx) => {
-                  const lineTotal = (line.quantity_received * line.unit_cost) + (line.gst_amount || 0);
-                  const currentProd = products.find(p => p.id === line.product_id);
-                  return (
-                    <tr key={idx}>
-                      <td className="py-3 pr-4">
-                        <select
-                          value={line.product_id}
-                          onChange={e => handleProductChange(idx, e.target.value)}
-                          required
-                          className="w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                        >
-                          <option value="">Select Product</option>
-                          {products.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (Stock: {p.current_stock} {p.unit})
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-3 px-4">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={line.quantity_received}
-                          onChange={e => handleLineChange(idx, 'quantity_received', parseFloat(e.target.value) || 0)}
-                          required
-                          className="w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-blue-600"
-                        />
-                      </td>
-                      <td className="py-3 px-4">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={line.unit_cost}
-                          onChange={e => handleLineChange(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                          required
-                          className="w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                        />
-                      </td>
-                      <td className="py-3 px-4">
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={line.gst_rate}
-                          onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
-                          className="w-full px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                        />
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600 font-medium">
-                        ₹{line.gst_amount.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-right font-medium text-gray-900">
-                        ₹{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3 pl-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => removeLine(idx)}
-                          disabled={lines.length === 1}
-                          className="text-red-500 hover:text-red-700 disabled:opacity-30"
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="border-t border-gray-200 pt-4 flex flex-col items-end space-y-2">
-            <div className="text-sm text-gray-600">
-              Subtotal: <span className="font-semibold text-gray-800">₹{calculateSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-            </div>
-            <div className="text-sm text-gray-600">
-              GST: <span className="font-semibold text-gray-800">₹{calculateTotalGST().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-            </div>
-            {formData.delivery_charges > 0 && (
-              <div className="text-sm text-gray-600">
-                Delivery Charges: <span className="font-semibold text-gray-800">₹{Number(formData.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+        {/* Receipt Header Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Receipt Overview</CardTitle>
+            <CardDescription>Inbound identifiers, supplier metadata, and receipt date</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  GRN Number <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.receipt_number}
+                  onChange={e => setFormData({ ...formData, receipt_number: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                />
               </div>
-            )}
-            <div className="text-lg font-bold text-gray-900 border-t border-gray-200 pt-2">
-              Grand Total: ₹{calculateGrandTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Supplier / Vendor
+                </label>
+                <select
+                  value={formData.supplier_id}
+                  onChange={e => setFormData({ ...formData, supplier_id: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Direct Procurement (No Supplier)</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>{s.company_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Received Date <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={formData.receipt_date}
+                  onChange={e => setFormData({ ...formData, receipt_date: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Inbound Freight / Delivery (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.delivery_charges}
+                  onChange={e => setFormData({ ...formData, delivery_charges: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white rounded-lg shadow-md p-6 space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Notes & Inspection Details</label>
-          <textarea
-            rows={3}
-            value={formData.notes}
-            onChange={e => setFormData({ ...formData, notes: e.target.value })}
-            placeholder="Condition of goods, packaging notes, vehicle number..."
-            className="w-full px-4 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-        </div>
+        {/* Received Items Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle>Inbound Line Items</CardTitle>
+              <CardDescription>Quantities verified will be automatically credited to active warehouse inventory</CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addLine}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <Icons.add className="w-3.5 h-3.5" />
+              Add Item
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0 sm:p-6 sm:pt-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-muted/50 border-y sm:border-y-0 sm:border-b border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-2.5 min-w-[220px]">Product</th>
+                    <th className="px-3 py-2.5 w-28">Qty Received</th>
+                    <th className="px-3 py-2.5 w-32">Unit Cost (₹)</th>
+                    <th className="px-3 py-2.5 w-24">GST %</th>
+                    <th className="px-3 py-2.5 w-28 text-right">GST (₹)</th>
+                    <th className="px-4 py-2.5 w-32 text-right">Line Total</th>
+                    <th className="px-2 py-2.5 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {lines.map((line, idx) => {
+                    const lineTotal = (line.quantity_received * line.unit_cost) + (line.gst_amount || 0);
+                    const currentProd = products.find(p => p.id === line.product_id);
+                    return (
+                      <tr key={idx} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-3">
+                          <select
+                            value={line.product_id}
+                            onChange={e => handleProductChange(idx, e.target.value)}
+                            required
+                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          >
+                            <option value="">Select Product...</option>
+                            {products.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} (Current: {p.current_stock} {p.unit})
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-3 py-3">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={line.quantity_received}
+                            onChange={e => handleLineChange(idx, 'quantity_received', parseFloat(e.target.value) || 0)}
+                            required
+                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </td>
+                        <td className="px-3 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.unit_cost}
+                            onChange={e => handleLineChange(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
+                            required
+                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </td>
+                        <td className="px-3 py-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={line.gst_rate}
+                            onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground">
+                          ₹{line.gst_amount.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-semibold text-foreground">
+                          ₹{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeLine(idx)}
+                            disabled={lines.length === 1}
+                            className="text-muted-foreground hover:text-destructive disabled:opacity-20 transition-colors p-1"
+                          >
+                            <Icons.close className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-        <div className="flex justify-end space-x-4">
-          <Link
-            href="/receipts"
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium disabled:bg-green-300"
-          >
-            {loading ? 'Recording GRN...' : 'Receive Stock (Increase Inventory)'}
-          </button>
+            {/* Financial Summary */}
+            <div className="border-t border-border/60 p-4 sm:p-6 bg-muted/20 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
+              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+                <span>Items Subtotal:</span>
+                <span className="font-mono font-medium text-foreground">₹{calculateSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+                <span>Total Input GST:</span>
+                <span className="font-mono font-medium text-foreground">₹{calculateTotalGST().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              {formData.delivery_charges > 0 && (
+                <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+                  <span>Inbound Freight:</span>
+                  <span className="font-mono font-medium text-foreground">₹{Number(formData.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              <div className="flex justify-between w-full max-w-xs pt-2 border-t border-border text-base font-bold text-foreground">
+                <span>Grand Total:</span>
+                <span className="font-mono text-primary">₹{calculateGrandTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Notes Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Inspection & Receiving Remarks</CardTitle>
+            <CardDescription>Record packaging integrity, carrier vehicle number, or batch condition</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <textarea
+              rows={3}
+              value={formData.notes}
+              onChange={e => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="e.g. Delivered via Blue Dart, package seals intact, inspected by warehouse manager..."
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <Button variant="outline" asChild>
+            <Link href="/receipts">
+              Cancel
+            </Link>
+          </Button>
+          <Button type="submit" variant="success" disabled={loading}>
+            {loading ? (
+              <>
+                <Icons.refresh className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                Updating Inventory...
+              </>
+            ) : (
+              <>
+                <Icons.in className="w-3.5 h-3.5 mr-1.5" />
+                Receive Stock & Increment Inventory
+              </>
+            )}
+          </Button>
         </div>
       </form>
-    </div>
+    </PageContainer>
   );
 }
 
 export default function NewReceiptPage() {
   return (
     <Suspense fallback={
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Initializing receipt form...</p>
+          </div>
+        </div>
+      </PageContainer>
     }>
       <NewReceiptForm />
     </Suspense>
