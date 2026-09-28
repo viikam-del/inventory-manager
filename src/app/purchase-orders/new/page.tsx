@@ -62,7 +62,7 @@ export default function NewPurchaseOrderPage() {
         const [suppliersRes, productsRes, lastPORes] = await Promise.all([
           supabase.from('suppliers').select('id, company_name, default_credit_days').eq('is_deleted', false).order('company_name'),
           supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_gst, price_non_gst').eq('is_deleted', false).order('name'),
-          supabase.from('purchase_orders').select('po_number').order('created_at', { ascending: false }).limit(1)
+          supabase.from('purchase_orders').select('po_number').not('po_number', 'is', null).order('po_number', { ascending: false }).limit(1)
         ]);
 
         if (suppliersRes.error) throw suppliersRes.error;

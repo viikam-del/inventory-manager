@@ -17,13 +17,22 @@ export default function Dashboard() {
     lowStockCount: 0,
     pendingDeliveries: 0,
     pendingTallyInvoices: 0,
+    // P&L (GST-exclusive)
+    billedSalesRevenue: 0,
+    cashSalesRevenue: 0,
     totalSales: 0,
+    salesFreight: 0,
+    billedPurchaseCost: 0,
+    cashPurchaseCost: 0,
+    totalPurchases: 0,
+    purchaseFreight: 0,
+    grossProfit: 0,
+    // Collections
     totalCollections: 0,
+    // GST Ledger (billed lines only)
     totalOutputGST: 0,
     totalInputGST: 0,
     netGST: 0,
-    totalPurchases: 0,
-    grossProfit: 0
   });
   const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [recentMovements, setRecentMovements] = useState<any[]>([]);
@@ -45,11 +54,11 @@ export default function Dashboard() {
 
         const pendingTallyRes = await supabase.from('sales_orders').select('*', { count: 'exact', head: true }).in('status', ['Delivered', 'Partially Delivered']).is('tally_invoice_number', null).eq('is_deleted', false);
 
-        const salesRes = await supabase.from('sales_orders').select('total_amount, gst_amount').eq('is_deleted', false).gte('order_date', startOfMonth).limit(1000);
+        const salesRes = await supabase.from('sales_orders').select('id, delivery_charges, is_gst, sales_order_lines(quantity, unit_price, gst_amount)').eq('is_deleted', false).gte('order_date', startOfMonth).limit(1000);
 
         const paymentsRes = await supabase.from('payments').select('amount').eq('is_deleted', false).gte('payment_date', startOfMonth).limit(1000);
 
-        const purchaseOrdersRes = await supabase.from('purchase_orders').select('delivery_charges, purchase_order_lines(quantity, unit_cost, gst_amount)').eq('is_deleted', false).neq('status', 'Cancelled').gte('order_date', startOfMonth).limit(100);
+        const purchaseOrdersRes = await supabase.from('purchase_orders').select('delivery_charges, purchase_order_lines(quantity, unit_cost, gst_amount, is_billed)').eq('is_deleted', false).neq('status', 'Cancelled').gte('order_date', startOfMonth).limit(100);
 
         const movementsRes = await supabase.from('stock_adjustments').select('*, products(name)').order('created_at', { ascending: false }).limit(6);
 
@@ -67,28 +76,58 @@ export default function Dashboard() {
         const pendingDeliveries = pendingDeliveriesRes.count || 0;
         const pendingTallyInvoices = pendingTallyRes.count || 0;
 
-        // 3. Process Financials
+        // 3. Process Financials — P&L is entirely GST-exclusive
         const salesData = salesRes.data || [];
-        const totalSales = salesData.reduce((acc, curr) => acc + Number(curr.total_amount || 0), 0);
-        const totalOutputGST = salesData.reduce((acc, curr) => acc + Number(curr.gst_amount || 0), 0);
 
-        const paymentData = paymentsRes.data || [];
-        const totalCollections = paymentData.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+        let billedSalesRevenue = 0;
+        let cashSalesRevenue = 0;
+        let salesFreight = 0;
+        let totalOutputGST = 0;
 
-        let totalPurchases = 0;
-        let totalInputGST = 0;
-        const poData = purchaseOrdersRes.data || [];
+        salesData.forEach((so: any) => {
+          salesFreight += Number(so.delivery_charges || 0);
+          const isBilledOrder = so.is_gst === true;
 
-        poData.forEach((po: any) => {
-          totalPurchases += Number(po.delivery_charges || 0);
-          if (po.purchase_order_lines) {
-            po.purchase_order_lines.forEach((line: any) => {
-              totalInputGST += Number(line.gst_amount || 0);
-              totalPurchases += (Number(line.quantity || 0) * Number(line.unit_cost || 0)) + Number(line.gst_amount || 0);
+          if (so.sales_order_lines) {
+            so.sales_order_lines.forEach((line: any) => {
+              const lineRevenue = Number(line.quantity || 0) * Number(line.unit_price || 0);
+              if (isBilledOrder) {
+                billedSalesRevenue += lineRevenue;
+                totalOutputGST += Number(line.gst_amount || 0);
+              } else {
+                cashSalesRevenue += lineRevenue;
+              }
             });
           }
         });
 
+        const totalSales = billedSalesRevenue + cashSalesRevenue + salesFreight;
+
+        const paymentData = paymentsRes.data || [];
+        const totalCollections = paymentData.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+
+        let billedPurchaseCost = 0;
+        let cashPurchaseCost = 0;
+        let purchaseFreight = 0;
+        let totalInputGST = 0;
+        const poData = purchaseOrdersRes.data || [];
+
+        poData.forEach((po: any) => {
+          purchaseFreight += Number(po.delivery_charges || 0);
+          if (po.purchase_order_lines) {
+            po.purchase_order_lines.forEach((line: any) => {
+              const lineCost = Number(line.quantity || 0) * Number(line.unit_cost || 0);
+              if (line.is_billed) {
+                billedPurchaseCost += lineCost;
+                totalInputGST += Number(line.gst_amount || 0);
+              } else {
+                cashPurchaseCost += lineCost;
+              }
+            });
+          }
+        });
+
+        const totalPurchases = billedPurchaseCost + cashPurchaseCost + purchaseFreight;
         const netGST = totalOutputGST - totalInputGST;
         const grossProfit = totalSales - totalPurchases;
 
@@ -97,13 +136,19 @@ export default function Dashboard() {
           lowStockCount,
           pendingDeliveries,
           pendingTallyInvoices,
+          billedSalesRevenue,
+          cashSalesRevenue,
           totalSales,
+          salesFreight,
+          billedPurchaseCost,
+          cashPurchaseCost,
+          totalPurchases,
+          purchaseFreight,
+          grossProfit,
           totalCollections,
           totalOutputGST,
           totalInputGST,
           netGST,
-          totalPurchases,
-          grossProfit
         });
 
         setLowStockItems(lowStockItemsData.slice(0, 10));
@@ -265,16 +310,41 @@ export default function Dashboard() {
               <Badge variant="secondary" className="text-[10px]">This Month</Badge>
             </div>
             <CardDescription className="text-xs">
-              Direct comparison of gross sales revenue against procurement costs for the current month
+              GST-exclusive P&L — billed vs. cash segmented with freight for both sales and procurement
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 space-y-3 pt-0">
-            <div className="flex justify-between items-center py-2.5 border-b border-border/50 text-sm">
-              <span className="text-muted-foreground">Total Sales Revenue</span>
+            <div className="flex justify-between items-center py-2 border-b border-border/50 text-sm">
+              <span className="text-muted-foreground pl-2">Billed Sales (GST Orders)</span>
+              <span className="font-medium font-mono">₹{stats.billedSalesRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50 text-sm">
+              <span className="text-muted-foreground pl-2">Cash Sales (Non-GST)</span>
+              <span className="font-medium font-mono">₹{stats.cashSalesRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50 text-sm">
+              <span className="text-muted-foreground pl-2">Freight / Delivery</span>
+              <span className="font-medium font-mono">₹{stats.salesFreight.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/60 text-sm bg-muted/30 rounded px-2">
+              <span className="text-foreground font-semibold">Total Sales Revenue</span>
               <span className="font-semibold font-mono">₹{stats.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
-            <div className="flex justify-between items-center py-2.5 border-b border-border/50 text-sm">
-              <span className="text-muted-foreground">Total Procurement Costs</span>
+
+            <div className="flex justify-between items-center py-2 border-b border-border/50 text-sm">
+              <span className="text-muted-foreground pl-2">Billed Procurement (GST POs)</span>
+              <span className="font-medium font-mono">₹{stats.billedPurchaseCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50 text-sm">
+              <span className="text-muted-foreground pl-2">Cash Procurement (Non-GST)</span>
+              <span className="font-medium font-mono">₹{stats.cashPurchaseCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/50 text-sm">
+              <span className="text-muted-foreground pl-2">Freight / Delivery</span>
+              <span className="font-medium font-mono">₹{stats.purchaseFreight.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-b border-border/60 text-sm bg-muted/30 rounded px-2">
+              <span className="text-foreground font-semibold">Total Procurement Costs</span>
               <span className="font-semibold font-mono">₹{stats.totalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
           </CardContent>
@@ -296,24 +366,24 @@ export default function Dashboard() {
                 <Icons.document className="w-4 h-4 text-primary" />
                 <span>GST Tax Ledger</span>
               </CardTitle>
-              <Badge variant="secondary" className="text-[10px]">ITC Balance</Badge>
+              <Badge variant="secondary" className="text-[10px]">This Month</Badge>
             </div>
             <CardDescription className="text-xs">
-              Output GST collected from sales vs. Input Tax Credit paid on purchases
+              Billed transactions only — Output GST collected on sales vs. Input GST paid on purchases
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 space-y-3 pt-0">
             <div className="flex justify-between items-center py-2.5 border-b border-border/50 text-sm">
               <div className="flex flex-col">
                 <span className="text-foreground font-medium">Output GST (Collected)</span>
-                <span className="text-[11px] text-muted-foreground">Total tax billed on customer sales</span>
+                <span className="text-[11px] text-muted-foreground">Tax collected from customers on invoiced sales</span>
               </div>
               <span className="font-semibold font-mono">₹{stats.totalOutputGST.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between items-center py-2.5 border-b border-border/50 text-sm">
               <div className="flex flex-col">
-                <span className="text-foreground font-medium">Input GST (ITC)</span>
-                <span className="text-[11px] text-muted-foreground">Tax credit paid on vendor POs</span>
+                <span className="text-foreground font-medium">Input GST (Paid)</span>
+                <span className="text-[11px] text-muted-foreground">Tax paid to vendors on billed purchases</span>
               </div>
               <span className="font-semibold font-mono">₹{stats.totalInputGST.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>

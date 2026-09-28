@@ -78,7 +78,7 @@ export default function NewSalesOrderPage() {
         const [customersRes, productsRes, lastSORes] = await Promise.all([
           supabase.from('customers').select('*').eq('is_deleted', false).order('company_name'),
           supabase.from('products').select('*').eq('is_deleted', false).order('name'),
-          supabase.from('sales_orders').select('so_number').order('created_at', { ascending: false }).limit(1)
+          supabase.from('sales_orders').select('order_number').not('order_number', 'is', null).order('order_number', { ascending: false }).limit(1)
         ]);
 
         if (customersRes.error) throw customersRes.error;
@@ -88,14 +88,14 @@ export default function NewSalesOrderPage() {
         setProducts(productsRes.data || []);
 
         // Generate sequential SO number
-        if (lastSORes.data && lastSORes.data.length > 0 && lastSORes.data[0].so_number) {
-          const lastSO = lastSORes.data[0].so_number;
+        if (lastSORes.data && lastSORes.data.length > 0 && lastSORes.data[0].order_number) {
+          const lastSO = lastSORes.data[0].order_number;
           const match = lastSO.match(/SO-(\d+)/);
           if (match && match[1]) {
             const nextNum = parseInt(match[1], 10) + 1;
             setFormData(prev => ({ ...prev, order_number: `SO-${nextNum}` }));
           } else {
-            setFormData(prev => ({ ...prev, order_number: `SO-${Math.floor(100000 + Math.random() * 900000)}` }));
+            setFormData(prev => ({ ...prev, order_number: `SO-${Date.now().toString().slice(-6)}` }));
           }
         } else {
           setFormData(prev => ({ ...prev, order_number: `SO-100001` }));
