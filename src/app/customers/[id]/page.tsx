@@ -50,15 +50,21 @@ export default function CustomerDetailPage() {
 
       if (supabaseError) throw supabaseError;
       setCustomer(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load customer details');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load customer details';
+      setError(message);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchCustomer();
+    let isMounted = true;
+    async function load() {
+      await fetchCustomer();
+    }
+    load();
+    return () => { isMounted = false; };
   }, [params.id]);
 
   const handleDelete = async () => {
@@ -73,8 +79,9 @@ export default function CustomerDetailPage() {
 
       if (supabaseError) throw supabaseError;
       router.push('/customers');
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete customer');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete customer';
+      alert(message);
       setActionLoading(false);
     }
   };

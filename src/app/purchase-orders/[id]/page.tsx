@@ -95,15 +95,21 @@ export default function PurchaseOrderDetailPage() {
       if (!receiptsError) {
         setReceipts(receiptsData || []);
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load purchase order');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load purchase order';
+      setError(message);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchPODetails();
+    let isMounted = true;
+    async function load() {
+      await fetchPODetails();
+    }
+    load();
+    return () => { isMounted = false; };
   }, [params.id]);
 
   const handleCancelPO = async () => {
@@ -117,8 +123,9 @@ export default function PurchaseOrderDetailPage() {
 
       if (cancelError) throw cancelError;
       setPo(prev => prev ? { ...prev, status: 'Cancelled' } : null);
-    } catch (err: any) {
-      alert(err.message || 'Failed to cancel PO');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to cancel PO';
+      alert(message);
     } finally {
       setActionLoading(false);
     }
@@ -135,8 +142,9 @@ export default function PurchaseOrderDetailPage() {
 
       if (deleteError) throw deleteError;
       router.push('/purchase-orders');
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete PO');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete PO';
+      alert(message);
       setActionLoading(false);
     }
   };

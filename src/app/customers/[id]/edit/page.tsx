@@ -75,15 +75,21 @@ export default function EditCustomerPage() {
           notes: data.notes || '',
         });
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load customer details');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load customer details';
+      setError(message);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchCustomer();
+    let isMounted = true;
+    async function load() {
+      await fetchCustomer();
+    }
+    load();
+    return () => { isMounted = false; };
   }, [params.id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
