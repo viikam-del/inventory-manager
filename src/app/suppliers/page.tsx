@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useDeferredValue } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Icons } from '@/components/icons';
@@ -26,7 +25,6 @@ export default function SuppliersPage() {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const router = useRouter();
 
   useEffect(() => {
     fetchSuppliers();

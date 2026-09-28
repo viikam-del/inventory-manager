@@ -23,6 +23,7 @@ export default function NewPaymentPage() {
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
+    payment_number: 'Generating...',
     customer_id: '',
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
@@ -34,16 +35,28 @@ export default function NewPaymentPage() {
   useEffect(() => {
     async function loadCustomers() {
       try {
-        const { data, error: supabaseError } = await supabase
-          .from('customers')
-          .select('id, company_name, opening_balance')
-          .eq('is_deleted', false)
-          .order('company_name');
+        const [customersRes, lastPaymentRes] = await Promise.all([
+          supabase.from('customers').select('id, company_name, opening_balance').eq('is_deleted', false).order('company_name'),
+          supabase.from('payments').select('payment_number').order('created_at', { ascending: false }).limit(1)
+        ]);
 
-        if (supabaseError) throw supabaseError;
-        setCustomers(data || []);
+        if (customersRes.error) throw customersRes.error;
+        setCustomers(customersRes.data || []);
+
+        if (lastPaymentRes.data && lastPaymentRes.data.length > 0 && lastPaymentRes.data[0].payment_number) {
+          const lastPAY = lastPaymentRes.data[0].payment_number;
+          const match = lastPAY.match(/PAY-(\d+)/);
+          if (match && match[1]) {
+            const nextNum = parseInt(match[1], 10) + 1;
+            setFormData(prev => ({ ...prev, payment_number: `PAY-${nextNum}` }));
+          } else {
+            setFormData(prev => ({ ...prev, payment_number: `PAY-${Date.now().toString().slice(-6)}` }));
+          }
+        } else {
+          setFormData(prev => ({ ...prev, payment_number: `PAY-100001` }));
+        }
       } catch (err: any) {
-        setError(err.message || 'Failed to load customers');
+        setError(err.message || 'Failed to load form data');
       } finally {
         setFetching(false);
       }
@@ -69,6 +82,7 @@ export default function NewPaymentPage() {
       const { error: insertError } = await supabase
         .from('payments')
         .insert([{
+          payment_number: formData.payment_number,
           customer_id: formData.customer_id,
           amount: parseFloat(formData.amount),
           payment_date: formData.payment_date,

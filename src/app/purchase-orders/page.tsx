@@ -251,7 +251,7 @@ export default function PurchaseOrdersPage() {
                               <Icons.edit className="w-4 h-4" />
                             </Link>
                           </Button>
-                          {po.status !== 'Received' && po.status !== 'Ordered' && (
+                          {po.status !== 'Received' && po.status !== 'Ordered' && po.status !== 'Cancelled' && (
                             <Button
                               variant="ghost"
                               size="sm"

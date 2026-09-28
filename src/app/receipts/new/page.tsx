@@ -46,7 +46,7 @@ function NewReceiptForm() {
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
-    receipt_number: `GRN-${Math.floor(100000 + Math.random() * 900000)}`,
+    receipt_number: 'Generating...',
     purchase_order_id: poIdParam || '',
     supplier_id: '',
     receipt_date: new Date().toISOString().split('T')[0],
@@ -62,9 +62,10 @@ function NewReceiptForm() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [suppliersRes, productsRes] = await Promise.all([
+        const [suppliersRes, productsRes, lastReceiptRes] = await Promise.all([
           supabase.from('suppliers').select('id, company_name').eq('is_deleted', false).order('company_name'),
-          supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_non_gst, current_stock').eq('is_deleted', false).order('name')
+          supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_non_gst, current_stock').eq('is_deleted', false).order('name'),
+          supabase.from('receipts').select('receipt_number').order('created_at', { ascending: false }).limit(1)
         ]);
 
         if (suppliersRes.error) throw suppliersRes.error;
@@ -72,6 +73,20 @@ function NewReceiptForm() {
 
         setSuppliers(suppliersRes.data || []);
         setProducts(productsRes.data || []);
+
+        // Generate sequential GRN number
+        if (lastReceiptRes.data && lastReceiptRes.data.length > 0 && lastReceiptRes.data[0].receipt_number) {
+          const lastGRN = lastReceiptRes.data[0].receipt_number;
+          const match = lastGRN.match(/GRN-(\d+)/);
+          if (match && match[1]) {
+            const nextNum = parseInt(match[1], 10) + 1;
+            setFormData(prev => ({ ...prev, receipt_number: `GRN-${nextNum}` }));
+          } else {
+            setFormData(prev => ({ ...prev, receipt_number: `GRN-${Date.now().toString().slice(-6)}` }));
+          }
+        } else {
+          setFormData(prev => ({ ...prev, receipt_number: `GRN-100001` }));
+        }
 
         // If PO ID is provided in query, prefill lines and supplier from the PO
         if (poIdParam) {

@@ -14,10 +14,11 @@ export default function StaffLoginPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleKeyPress = (num: string) => {
-    if (pin.length < 4) {
-      setPin(prev => prev + num);
-      setError('');
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key >= '0' && e.key <= '9') {
+      onNumClick(e.key);
+    } else if (e.key === 'Backspace') {
+      handleBackspace();
     }
   };
 
@@ -72,6 +73,18 @@ export default function StaffLoginPage() {
 
         <Card className="bg-slate-800/50 border-slate-700/50 shadow-2xl backdrop-blur-xl">
           <CardContent className="p-8 pb-10">
+            {/* Hidden Input for Keyboard/Mobile support */}
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="opacity-0 absolute -z-10"
+              value={pin}
+              onChange={() => {}}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              disabled={loading}
+            />
             {/* PIN Dots Display */}
             <div className="flex justify-center gap-4 mb-8">
               {[0, 1, 2, 3].map((i) => (
@@ -130,8 +143,6 @@ export default function StaffLoginPage() {
                 <Icons.refresh className="w-6 h-6 text-primary animate-spin mx-auto" />
               </div>
             )}
-
-            <p className="text-center text-xs text-slate-500 mt-6">Demo Staff PIN: 1234</p>
           </CardContent>
         </Card>
 

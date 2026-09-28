@@ -134,7 +134,7 @@ export default function SalesOrderDetailPage() {
             product_id: line.product_id,
             adjustment_type: 'Out',
             quantity: line.quantity,
-            reason: `Sales Order fulfillment: ${order.order_number}`,
+            reason: `Delivery: ${order.order_number}`,
             reference_type: 'SalesOrder',
             reference_id: order.id
           }]);

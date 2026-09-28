@@ -34,7 +34,9 @@ export default function CustomerDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ledgerLoading, setLedgerLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,11 +52,62 @@ export default function CustomerDetailPage() {
 
       if (supabaseError) throw supabaseError;
       setCustomer(data);
+      if (data) fetchLedger(data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load customer details';
       setError(message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchLedger(cust: Customer) {
+    setLedgerLoading(true);
+    try {
+      const [salesRes, paymentsRes] = await Promise.all([
+        supabase.from('sales_orders').select('*').eq('customer_id', cust.id).eq('is_deleted', false),
+        supabase.from('payments').select('*').eq('customer_id', cust.id).eq('is_deleted', false)
+      ]);
+
+      if (salesRes.error) throw salesRes.error;
+      if (paymentsRes.error) throw paymentsRes.error;
+
+      const sales = salesRes.data.map((s: any) => ({
+        id: s.id,
+        date: s.order_date,
+        type: 'Sale',
+        reference: s.so_number,
+        link: `/sales-orders/${s.id}`,
+        status: s.status,
+        amount: (Number(s.total_amount) + Number(s.gst_amount)),
+        isDebit: true // Owe us more
+      }));
+
+      const payments = paymentsRes.data.map((p: any) => ({
+        id: p.id,
+        date: p.payment_date,
+        type: 'Payment',
+        reference: p.payment_number || p.reference_number || 'PAY',
+        link: `/payments/${p.id}`,
+        status: p.method,
+        amount: Number(p.amount),
+        isDebit: false // Paid us
+      }));
+
+      const combined = [...sales, ...payments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      let running = Number(cust.opening_balance || 0);
+      const withBalance = combined.map(entry => {
+        if (entry.isDebit) running += entry.amount;
+        else running -= entry.amount;
+        return { ...entry, running_balance: running };
+      });
+
+      setLedger(withBalance);
+    } catch (err) {
+      console.error('Failed to load ledger', err);
+    } finally {
+      setLedgerLoading(false);
     }
   }
 
@@ -276,23 +329,99 @@ export default function CustomerDetailPage() {
 
       {/* Ledger UI Stub */}
       <div className="mt-6 sm:mt-8">
-        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-          <Icons.receipts className="w-5 h-5 text-primary" /> Account Ledger
-        </h3>
-        <Card className="border-dashed border-2">
-          <CardContent className="py-12 flex flex-col items-center justify-center text-center">
-            <Icons.search className="w-8 h-8 text-muted-foreground/30 mb-3" />
-            <p className="text-sm font-medium text-foreground">No transactions available yet</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-              Sales orders and payment history linked to {customer.company_name} will automatically appear in this section.
-            </p>
-            <Button variant="outline" size="sm" asChild className="mt-6 h-8 text-xs">
-              <Link href={`/payments/new?customer=${customer.id}`}>
-                <Icons.add className="w-3.5 h-3.5 mr-1" /> Add Payment Entry
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
+          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <Icons.receipts className="w-5 h-5 text-primary" /> Account Ledger
+          </h3>
+          <Button variant="outline" size="sm" asChild className="h-8 text-xs shrink-0 w-full sm:w-auto">
+            <Link href={`/payments/new?customer=${customer.id}`}>
+              <Icons.add className="w-3.5 h-3.5 mr-1" /> Add Payment Entry
+            </Link>
+          </Button>
+        </div>
+
+        {ledgerLoading ? (
+          <Card className="border-dashed border-2">
+            <CardContent className="py-12 flex items-center justify-center">
+              <Icons.refresh className="w-6 h-6 animate-spin text-muted-foreground mx-auto" />
+            </CardContent>
+          </Card>
+        ) : ledger.length === 0 ? (
+          <Card className="border-dashed border-2">
+            <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+              <Icons.search className="w-8 h-8 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-medium text-foreground">No transactions available yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Sales orders and payment history linked to {customer.company_name} will automatically appear in this section.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-muted/60 border-b border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Status/Info</th>
+                    <th className="px-4 py-3 text-right">Debit (Sale)</th>
+                    <th className="px-4 py-3 text-right">Credit (Paid)</th>
+                    <th className="px-4 py-3 text-right">Running Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  <tr className="bg-muted/20">
+                    <td className="px-4 py-3 text-muted-foreground text-xs italic">Opening Balance</td>
+                    <td className="px-4 py-3"></td>
+                    <td className="px-4 py-3"></td>
+                    <td className="px-4 py-3 text-right font-medium">{customer.opening_balance > 0 ? `₹${customer.opening_balance.toLocaleString('en-IN')}` : ''}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{customer.opening_balance <= 0 ? `₹${Math.abs(customer.opening_balance).toLocaleString('en-IN')}` : ''}</td>
+                    <td className="px-4 py-3 text-right font-bold">₹{Number(customer.opening_balance).toLocaleString('en-IN')}</td>
+                  </tr>
+
+                  {ledger.map((entry, idx) => (
+                    <tr key={`${entry.type}-${entry.id}-${idx}`} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        {new Date(entry.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`font-medium ${entry.type === 'Sale' ? 'text-primary' : 'text-success'}`}>
+                            {entry.type}
+                          </span>
+                          <Link href={entry.link} className="font-mono text-[10px] text-muted-foreground hover:underline">
+                            {entry.reference}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {entry.type === 'Sale' ? (
+                          <Badge variant="outline" className="text-[10px] bg-background">{entry.status}</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px]">{entry.status}</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-foreground">
+                        {entry.isDebit && entry.amount > 0 ? `₹${entry.amount.toLocaleString('en-IN')}` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-success">
+                        {!entry.isDebit && entry.amount > 0 ? `₹${entry.amount.toLocaleString('en-IN')}` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-foreground">
+                        {entry.running_balance < 0 ? (
+                          <span className="text-success">₹{Math.abs(entry.running_balance).toLocaleString('en-IN')} (Cr)</span>
+                        ) : (
+                          `₹${entry.running_balance.toLocaleString('en-IN')}`
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
     </PageContainer>
   );

@@ -32,7 +32,9 @@ export default function SupplierDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [supplier, setSupplier] = useState<Supplier | null>(null);
+  const [ledger, setLedger] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ledgerLoading, setLedgerLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -52,10 +54,79 @@ export default function SupplierDetailPage() {
 
       if (supabaseError) throw supabaseError;
       setSupplier(data);
+      if (data) fetchSupplierLedger(data.id);
     } catch (err: any) {
       setError(err.message || 'Failed to load supplier details');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchSupplierLedger(supplierId: string) {
+    setLedgerLoading(true);
+    try {
+      const [posRes, receiptsRes] = await Promise.all([
+        supabase
+          .from('purchase_orders')
+          .select('id, po_number, order_date, status, delivery_charges, purchase_order_lines(total_amount)')
+          .eq('supplier_id', supplierId)
+          .eq('is_deleted', false),
+        supabase
+          .from('receipts')
+          .select('id, receipt_number, receipt_date, status, delivery_charges, receipt_lines(total_amount), purchase_orders(po_number)')
+          .eq('supplier_id', supplierId)
+          .eq('is_deleted', false)
+      ]);
+
+      if (posRes.error) throw posRes.error;
+      if (receiptsRes.error) throw receiptsRes.error;
+
+      const pos = (posRes.data || []).map((po: any) => {
+        const linesTotal = (po.purchase_order_lines || []).reduce((sum: number, l: any) => sum + Number(l.total_amount || 0), 0);
+        return {
+          id: po.id,
+          date: po.order_date,
+          type: 'Purchase Order',
+          reference: po.po_number,
+          link: `/purchase-orders/${po.id}`,
+          status: po.status,
+          amount: linesTotal + Number(po.delivery_charges || 0),
+          details: 'Placed Order'
+        };
+      });
+
+      const receipts = (receiptsRes.data || []).map((r: any) => {
+        const linesTotal = (r.receipt_lines || []).reduce((sum: number, l: any) => sum + Number(l.total_amount || 0), 0);
+        return {
+          id: r.id,
+          date: r.receipt_date,
+          type: 'GRN (Receipt)',
+          reference: r.receipt_number,
+          link: `/receipts/${r.id}`,
+          status: r.status,
+          amount: linesTotal + Number(r.delivery_charges || 0),
+          details: r.purchase_orders?.po_number ? `From PO: ${r.purchase_orders.po_number}` : 'Direct Inbound'
+        };
+      });
+
+      const combined = [...pos, ...receipts].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+
+      let running_po = 0;
+      let running_grn = 0;
+
+      const withCumulative = combined.map(entry => {
+        if (entry.type === 'Purchase Order') running_po += entry.amount;
+        if (entry.type === 'GRN (Receipt)') running_grn += entry.amount;
+        return { ...entry, cumulative_po: running_po, cumulative_grn: running_grn };
+      });
+
+      setLedger(withCumulative);
+    } catch (err: any) {
+      console.error('Failed to load supplier ledger', err);
+    } finally {
+      setLedgerLoading(false);
     }
   }
 
@@ -262,25 +333,98 @@ export default function SupplierDetailPage() {
         </Card>
       )}
 
-      {/* Procurement Order Placeholder */}
+      {/* Procurement Ledger */}
       <div className="mt-6 sm:mt-8">
-        <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-          <Icons.receipts className="w-5 h-5 text-primary" /> Purchase History & Receipts
-        </h3>
-        <Card className="border-dashed border-2">
-          <CardContent className="py-12 flex flex-col items-center justify-center text-center">
-            <Icons.search className="w-8 h-8 text-muted-foreground/30 mb-3" />
-            <p className="text-sm font-medium text-foreground">No purchase records available yet</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-              Purchase orders and goods receipt notes (GRN) from {supplier.company_name} will automatically appear in this section.
-            </p>
-            <Button variant="outline" size="sm" asChild className="mt-6 h-8 text-xs">
-              <Link href={`/purchase-orders/new?supplier=${supplier.id}`}>
-                <Icons.add className="w-3.5 h-3.5 mr-1" /> Create Purchase Order
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-3">
+          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <Icons.receipts className="w-5 h-5 text-primary" /> Purchase History & Receipts
+          </h3>
+          <Button variant="outline" size="sm" asChild className="h-8 text-xs shrink-0 w-full sm:w-auto">
+            <Link href={`/purchase-orders/new?supplier=${supplier.id}`}>
+              <Icons.add className="w-3.5 h-3.5 mr-1" /> Create Purchase Order
+            </Link>
+          </Button>
+        </div>
+
+        {ledgerLoading ? (
+          <Card className="border-dashed border-2">
+            <CardContent className="py-12 flex items-center justify-center">
+              <Icons.refresh className="w-6 h-6 animate-spin text-muted-foreground mx-auto" />
+            </CardContent>
+          </Card>
+        ) : ledger.length === 0 ? (
+          <Card className="border-dashed border-2">
+            <CardContent className="py-12 flex flex-col items-center justify-center text-center">
+              <Icons.search className="w-8 h-8 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-medium text-foreground">No purchase records available yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Purchase orders and goods receipt notes (GRN) from {supplier.company_name} will automatically appear in this section.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-muted/60 border-b border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Status/Info</th>
+                    <th className="px-4 py-3 text-right">Order Value (PO)</th>
+                    <th className="px-4 py-3 text-right">Received Value (GRN)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {ledger.map((entry, idx) => (
+                    <tr key={`${entry.type}-${entry.id}-${idx}`} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        {new Date(entry.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`font-medium ${entry.type === 'Purchase Order' ? 'text-primary' : 'text-success'}`}>
+                            {entry.type}
+                          </span>
+                          <Link href={entry.link} className="font-mono text-[10px] text-muted-foreground hover:underline">
+                            {entry.reference}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1 items-start">
+                          {entry.type === 'Purchase Order' ? (
+                            <Badge variant="outline" className="text-[10px] bg-background">{entry.status}</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px]">{entry.status}</Badge>
+                          )}
+                          <span className="text-[10px] text-muted-foreground line-clamp-1">{entry.details}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-foreground">
+                        {entry.type === 'Purchase Order' && entry.amount > 0 ? `₹${entry.amount.toLocaleString('en-IN')}` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-success">
+                        {entry.type === 'GRN (Receipt)' && entry.amount > 0 ? `₹${entry.amount.toLocaleString('en-IN')}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-muted/10 border-t-2 border-border/60">
+                    <td colSpan={3} className="px-4 py-3 text-right font-medium text-muted-foreground">
+                      Cumulative Totals
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-foreground">
+                      ₹{ledger.reduce((sum, e) => sum + (e.type === 'Purchase Order' ? e.amount : 0), 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-success">
+                      ₹{ledger.reduce((sum, e) => sum + (e.type === 'GRN (Receipt)' ? e.amount : 0), 0).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
     </PageContainer>
   );

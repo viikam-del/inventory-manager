@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useDeferredValue } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Icons } from '@/components/icons';
@@ -28,7 +27,6 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [methodFilter, setMethodFilter] = useState<string>('All');
-  const router = useRouter();
 
   useEffect(() => {
     fetchPayments();

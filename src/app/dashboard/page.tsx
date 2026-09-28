@@ -262,10 +262,10 @@ export default function Dashboard() {
                 <Icons.trendUp className="w-4 h-4 text-primary" />
                 <span>P&L Overview</span>
               </CardTitle>
-              <Badge variant="secondary" className="text-[10px]">All Time</Badge>
+              <Badge variant="secondary" className="text-[10px]">This Month</Badge>
             </div>
             <CardDescription className="text-xs">
-              Direct comparison of gross sales revenue against procurement costs
+              Direct comparison of gross sales revenue against procurement costs for the current month
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 space-y-3 pt-0">
@@ -374,7 +374,11 @@ export default function Dashboard() {
                   ) : (
                     lowStockItems.map(item => (
                       <tr key={item.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-5 py-3.5 font-medium text-foreground">{item.name}</td>
+                        <td className="px-5 py-3.5 font-medium text-foreground">
+                          <Link href={`/products/${item.id}`} className="hover:text-primary hover:underline">
+                            {item.name}
+                          </Link>
+                        </td>
                         <td className="px-5 py-3.5 text-center">
                           <Badge variant="destructive" className="font-mono">
                             {item.current_stock} {item.unit || 'units'}

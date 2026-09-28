@@ -44,7 +44,7 @@ export default function NewPurchaseOrderPage() {
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
-    po_number: `PO-${Math.floor(100000 + Math.random() * 900000)}`,
+    po_number: 'Generating...',
     supplier_id: '',
     order_date: new Date().toISOString().split('T')[0],
     expected_delivery_date: '',
@@ -59,9 +59,10 @@ export default function NewPurchaseOrderPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [suppliersRes, productsRes] = await Promise.all([
+        const [suppliersRes, productsRes, lastPORes] = await Promise.all([
           supabase.from('suppliers').select('id, company_name, default_credit_days').eq('is_deleted', false).order('company_name'),
-          supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_gst, price_non_gst').eq('is_deleted', false).order('name')
+          supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_gst, price_non_gst').eq('is_deleted', false).order('name'),
+          supabase.from('purchase_orders').select('po_number').order('created_at', { ascending: false }).limit(1)
         ]);
 
         if (suppliersRes.error) throw suppliersRes.error;
@@ -69,6 +70,20 @@ export default function NewPurchaseOrderPage() {
 
         setSuppliers(suppliersRes.data || []);
         setProducts(productsRes.data || []);
+
+        // Generate sequential PO number
+        if (lastPORes.data && lastPORes.data.length > 0 && lastPORes.data[0].po_number) {
+          const lastPO = lastPORes.data[0].po_number;
+          const match = lastPO.match(/PO-(\d+)/);
+          if (match && match[1]) {
+            const nextNum = parseInt(match[1], 10) + 1;
+            setFormData(prev => ({ ...prev, po_number: `PO-${nextNum}` }));
+          } else {
+            setFormData(prev => ({ ...prev, po_number: `PO-${Date.now().toString().slice(-6)}` }));
+          }
+        } else {
+          setFormData(prev => ({ ...prev, po_number: `PO-100001` }));
+        }
       } catch (err: any) {
         setError(err.message || 'Failed to load suppliers or products');
       } finally {

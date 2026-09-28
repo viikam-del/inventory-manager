@@ -56,7 +56,7 @@ export default function NewSalesOrderPage() {
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
-    order_number: `SO-${Math.floor(100000 + Math.random() * 900000)}`,
+    order_number: 'Generating...',
     customer_id: '',
     order_date: new Date().toISOString().split('T')[0],
     delivery_date: new Date().toISOString().split('T')[0],
@@ -75,9 +75,10 @@ export default function NewSalesOrderPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [customersRes, productsRes] = await Promise.all([
+        const [customersRes, productsRes, lastSORes] = await Promise.all([
           supabase.from('customers').select('*').eq('is_deleted', false).order('company_name'),
-          supabase.from('products').select('*').eq('is_deleted', false).order('name')
+          supabase.from('products').select('*').eq('is_deleted', false).order('name'),
+          supabase.from('sales_orders').select('so_number').order('created_at', { ascending: false }).limit(1)
         ]);
 
         if (customersRes.error) throw customersRes.error;
@@ -85,6 +86,20 @@ export default function NewSalesOrderPage() {
 
         setCustomers(customersRes.data || []);
         setProducts(productsRes.data || []);
+
+        // Generate sequential SO number
+        if (lastSORes.data && lastSORes.data.length > 0 && lastSORes.data[0].so_number) {
+          const lastSO = lastSORes.data[0].so_number;
+          const match = lastSO.match(/SO-(\d+)/);
+          if (match && match[1]) {
+            const nextNum = parseInt(match[1], 10) + 1;
+            setFormData(prev => ({ ...prev, order_number: `SO-${nextNum}` }));
+          } else {
+            setFormData(prev => ({ ...prev, order_number: `SO-${Math.floor(100000 + Math.random() * 900000)}` }));
+          }
+        } else {
+          setFormData(prev => ({ ...prev, order_number: `SO-100001` }));
+        }
       } catch (err: any) {
         setError(err.message || 'Failed to load initial form data');
       } finally {

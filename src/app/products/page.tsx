@@ -201,8 +201,13 @@ export default function ProductsPage() {
                       <tr key={product.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-5 py-3.5">
                           <div className="space-y-0.5">
-                            <p className="font-semibold text-foreground text-sm">{product.name}</p>
-                            <div className="flex items-center gap-1.5">
+                            <Link
+                              href={`/products/${product.id}`}
+                              className="font-semibold text-foreground text-sm hover:text-primary dark:hover:text-primary hover:underline"
+                            >
+                              {product.name}
+                            </Link>
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {product.sku_code ? (
                                 <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border/40">
                                   {product.sku_code}

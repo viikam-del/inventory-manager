@@ -131,6 +131,93 @@ export default function PurchaseOrderDetailPage() {
     }
   };
 
+  const handleConfirmPO = async () => {
+    if (!confirm('Mark this Purchase Order as fully received? This will automatically create a GRN, update stock for all items, and log audit records.')) return;
+    setActionLoading(true);
+    try {
+      // 1. Create a Goods Received Note (GRN) record
+      const receiptNumber = `GRN-AUTO-${Date.now().toString().slice(-6)}`;
+      const { data: receiptData, error: receiptError } = await supabase
+        .from('receipts')
+        .insert([{
+          receipt_number: receiptNumber,
+          receipt_date: new Date().toISOString(),
+          status: 'Received',
+          purchase_order_id: params.id,
+          delivery_charges: po?.delivery_charges || 0,
+        }])
+        .select()
+        .single();
+
+      if (receiptError) throw receiptError;
+
+      // 2. Process each line item for stock update and receipt lines
+      for (const line of lines) {
+        // Insert into receipt_lines
+        const { error: lineError } = await supabase
+          .from('receipt_lines')
+          .insert([{
+            receipt_id: receiptData.id,
+            product_id: line.product_id,
+            quantity_received: line.quantity,
+            unit_cost: line.unit_cost,
+          }]);
+
+        if (lineError) throw lineError;
+
+        // Update product stock
+        const { data: prodData, error: prodFetchError } = await supabase
+          .from('products')
+          .select('current_stock')
+          .eq('id', line.product_id)
+          .single();
+
+        if (prodFetchError) throw prodFetchError;
+
+        const currentStock = Number(prodData?.current_stock) || 0;
+        const newStock = currentStock + line.quantity;
+
+        const { error: prodUpdateError } = await supabase
+          .from('products')
+          .update({ current_stock: newStock })
+          .eq('id', line.product_id);
+
+        if (prodUpdateError) throw prodUpdateError;
+
+        // Log stock adjustment
+        const { error: adjError } = await supabase
+          .from('stock_adjustments')
+          .insert([{
+            product_id: line.product_id,
+            adjustment_type: 'In',
+            quantity: line.quantity,
+            reason: `Quick Confirm PO: ${po?.po_number} (GRN: ${receiptNumber})`,
+            reference_type: 'Receipt',
+            reference_id: receiptData.id
+          }]);
+
+        if (adjError) throw adjError;
+      }
+
+      // 3. Update PO status to 'Received'
+      const { error: confirmError } = await supabase
+        .from('purchase_orders')
+        .update({ status: 'Received' })
+        .eq('id', params.id);
+
+      if (confirmError) throw confirmError;
+
+      // 4. Refresh UI and notify user
+      await fetchPODetails();
+      alert('Purchase Order marked as received and stock updated successfully.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to confirm PO and update stock';
+      alert(message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleDeletePO = async () => {
     if (!confirm('Delete this Purchase Order? This will move it to the archive.')) return;
     setActionLoading(true);
@@ -240,6 +327,15 @@ export default function PurchaseOrderDetailPage() {
                   <Link href={`/receipts/new?po_id=${po.id}`}>
                     <Icons.in className="w-3.5 h-3.5" /> Receive Stock (GRN)
                   </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={handleConfirmPO}
+                  disabled={actionLoading}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  <Icons.check className="w-3.5 h-3.5" /> Confirm Received
                 </Button>
                 <Button
                   size="sm"
