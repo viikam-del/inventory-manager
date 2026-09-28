@@ -32,6 +32,7 @@ interface POLineItem {
   unit_cost: number;
   gst_rate: number;
   gst_amount: number;
+  is_billed: boolean;
 }
 
 export default function NewPurchaseOrderPage() {
@@ -52,7 +53,7 @@ export default function NewPurchaseOrderPage() {
   });
 
   const [lines, setLines] = useState<POLineItem[]>([
-    { product_id: '', quantity: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0 }
+    { product_id: '', quantity: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0, is_billed: true }
   ]);
 
   useEffect(() => {
@@ -91,7 +92,8 @@ export default function NewPurchaseOrderPage() {
         quantity: qty,
         unit_cost: unitCost,
         gst_rate: gstRate,
-        gst_amount: Number(gstAmt.toFixed(2))
+        gst_amount: Number(gstAmt.toFixed(2)),
+        is_billed: true
       };
     } else {
       updated[index].product_id = '';
@@ -99,25 +101,28 @@ export default function NewPurchaseOrderPage() {
     setLines(updated);
   };
 
-  const handleLineChange = (index: number, field: keyof POLineItem, value: number) => {
+  const handleLineChange = (index: number, field: keyof POLineItem, value: any) => {
     const updated = [...lines];
     updated[index] = {
       ...updated[index],
       [field]: value
     };
 
-    if (field === 'quantity' || field === 'unit_cost' || field === 'gst_rate') {
+    if (field === 'quantity' || field === 'unit_cost' || field === 'gst_rate' || field === 'is_billed') {
       const qty = field === 'quantity' ? value : updated[index].quantity;
       const cost = field === 'unit_cost' ? value : updated[index].unit_cost;
       const rate = field === 'gst_rate' ? value : updated[index].gst_rate;
-      updated[index].gst_amount = Number(((qty * cost * rate) / 100).toFixed(2));
+      const billed = field === 'is_billed' ? value : updated[index].is_billed;
+
+      const calcRate = billed ? rate : 0;
+      updated[index].gst_amount = Number(((qty * cost * calcRate) / 100).toFixed(2));
     }
 
     setLines(updated);
   };
 
   const addLine = () => {
-    setLines(prev => [...prev, { product_id: '', quantity: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0 }]);
+    setLines(prev => [...prev, { product_id: '', quantity: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0, is_billed: true }]);
   };
 
   const removeLine = (index: number) => {
@@ -127,6 +132,14 @@ export default function NewPurchaseOrderPage() {
 
   const calculateSubtotal = () => {
     return lines.reduce((acc, l) => acc + (l.quantity * l.unit_cost), 0);
+  };
+
+  const calculateBilledSubtotal = () => {
+    return lines.reduce((acc, l) => acc + (l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
+  };
+
+  const calculateCashSubtotal = () => {
+    return lines.reduce((acc, l) => acc + (!l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
   };
 
   const calculateTotalGST = () => {
@@ -178,7 +191,8 @@ export default function NewPurchaseOrderPage() {
         product_id: line.product_id,
         quantity: line.quantity,
         unit_cost: line.unit_cost,
-        gst_amount: line.gst_amount
+        gst_amount: line.gst_amount,
+        is_billed: line.is_billed
       }));
 
       const { error: linesError } = await supabase
@@ -187,7 +201,7 @@ export default function NewPurchaseOrderPage() {
 
       if (linesError) throw linesError;
 
-      router.push(`/purchase-orders/${poData.id}`);
+      router.push('/purchase-orders');
     } catch (err: any) {
       setError(err.message || 'Failed to create purchase order');
     } finally {
@@ -337,6 +351,7 @@ export default function NewPurchaseOrderPage() {
                     <th className="px-4 py-2.5 min-w-[220px]">Product</th>
                     <th className="px-3 py-2.5 w-24">Qty</th>
                     <th className="px-3 py-2.5 w-32">Unit Cost (₹)</th>
+                    <th className="px-3 py-2.5 w-28 text-center">Billing Mode</th>
                     <th className="px-3 py-2.5 w-24">GST %</th>
                     <th className="px-3 py-2.5 w-28 text-right">GST (₹)</th>
                     <th className="px-4 py-2.5 w-32 text-right">Line Total</th>
@@ -385,6 +400,19 @@ export default function NewPurchaseOrderPage() {
                             className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </td>
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleLineChange(idx, 'is_billed', !line.is_billed)}
+                            className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-colors ${
+                              line.is_billed
+                                ? 'bg-primary/15 text-primary border border-primary/30'
+                                : 'bg-orange-500/15 text-orange-600 border border-orange-500/30'
+                            }`}
+                          >
+                            {line.is_billed ? 'Billed' : 'Cash'}
+                          </button>
+                        </td>
                         <td className="px-3 py-3">
                           <input
                             type="number"
@@ -392,7 +420,8 @@ export default function NewPurchaseOrderPage() {
                             step="1"
                             value={line.gst_rate}
                             onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            disabled={!line.is_billed}
+                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                           />
                         </td>
                         <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground">
@@ -421,8 +450,12 @@ export default function NewPurchaseOrderPage() {
             {/* Financial Summary */}
             <div className="border-t border-border/60 p-4 sm:p-6 bg-muted/20 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
               <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-                <span>Items Subtotal:</span>
-                <span className="font-mono font-medium text-foreground">₹{calculateSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span>Billed Subtotal:</span>
+                <span className="font-mono font-medium text-foreground">₹{calculateBilledSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+                <span>Cash Subtotal (Non-GST):</span>
+                <span className="font-mono font-medium text-foreground">₹{calculateCashSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between w-full max-w-xs text-muted-foreground">
                 <span>Total GST:</span>

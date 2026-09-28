@@ -13,6 +13,13 @@ import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 interface Customer {
   id: string;
   company_name: string;
+  contact_person?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  delivery_address?: string | null;
+  delivery_contact_person?: string | null;
+  delivery_contact_phone?: string | null;
+  gstin?: string | null;
   is_gst_customer: boolean;
   credit_limit: number | null;
   opening_balance: number;
@@ -42,6 +49,7 @@ export default function NewSalesOrderPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isGstOrder, setIsGstOrder] = useState<boolean>(true);
 
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -51,11 +59,12 @@ export default function NewSalesOrderPage() {
     order_number: `SO-${Math.floor(100000 + Math.random() * 900000)}`,
     customer_id: '',
     order_date: new Date().toISOString().split('T')[0],
-    delivery_date: '',
+    delivery_date: new Date().toISOString().split('T')[0],
     delivery_address: '',
     delivery_contact_person: '',
     delivery_contact_phone: '',
     delivery_charges: 0,
+    delivery_method: 'Porter',
     notes: '',
   });
 
@@ -89,27 +98,43 @@ export default function NewSalesOrderPage() {
   const handleCustomerChange = (customerId: string) => {
     const cust = customers.find(c => c.id === customerId) || null;
     setSelectedCustomer(cust);
-    setFormData(prev => ({ ...prev, customer_id: customerId }));
+    const targetIsGst = cust ? cust.is_gst_customer : true;
+    setIsGstOrder(targetIsGst);
 
-    if (cust) {
-      const updatedLines = lines.map(line => {
-        if (!line.product_id) return line;
-        const prod = products.find(p => p.id === line.product_id);
-        if (!prod) return line;
+    setFormData(prev => ({
+      ...prev,
+      customer_id: customerId,
+      delivery_address: cust?.delivery_address || cust?.address || prev.delivery_address,
+      delivery_contact_person: cust?.delivery_contact_person || cust?.contact_person || prev.delivery_contact_person,
+      delivery_contact_phone: cust?.delivery_contact_phone || cust?.phone || prev.delivery_contact_phone,
+    }));
 
-        const unitPrice = cust.is_gst_customer ? Number(prod.price_non_gst) : Number(prod.price_gst);
-        const gstRate = cust.is_gst_customer ? Number(prod.gst_rate) : 0;
-        const gstAmount = cust.is_gst_customer ? (line.quantity * unitPrice * gstRate) / 100 : 0;
+    recalculateLinesForGst(targetIsGst);
+  };
 
-        return {
-          ...line,
-          unit_price: unitPrice,
-          gst_rate: gstRate,
-          gst_amount: Number(gstAmount.toFixed(2))
-        };
-      });
-      setLines(updatedLines);
-    }
+  const toggleGstMode = (newGstMode: boolean) => {
+    setIsGstOrder(newGstMode);
+    recalculateLinesForGst(newGstMode);
+  };
+
+  const recalculateLinesForGst = (isGst: boolean) => {
+    const updatedLines = lines.map(line => {
+      if (!line.product_id) return line;
+      const prod = products.find(p => p.id === line.product_id);
+      if (!prod) return line;
+
+      const unitPrice = isGst ? Number(prod.price_non_gst) : Number(prod.price_gst);
+      const gstRate = isGst ? Number(prod.gst_rate) : 0;
+      const gstAmount = isGst ? (line.quantity * unitPrice * gstRate) / 100 : 0;
+
+      return {
+        ...line,
+        unit_price: unitPrice,
+        gst_rate: gstRate,
+        gst_amount: Number(gstAmount.toFixed(2))
+      };
+    });
+    setLines(updatedLines);
   };
 
   const handleProductChange = (index: number, productId: string) => {
@@ -117,7 +142,7 @@ export default function NewSalesOrderPage() {
     const updated = [...lines];
 
     if (selectedProd) {
-      const isGst = selectedCustomer?.is_gst_customer ?? true;
+      const isGst = isGstOrder;
       const unitPrice = isGst ? Number(selectedProd.price_non_gst) : Number(selectedProd.price_gst);
       const gstRate = isGst ? Number(selectedProd.gst_rate) : 0;
       const qty = updated[index].quantity || 1;
@@ -155,7 +180,7 @@ export default function NewSalesOrderPage() {
   };
 
   const addLine = () => {
-    const isGst = selectedCustomer?.is_gst_customer ?? true;
+    const isGst = isGstOrder;
     setLines(prev => [...prev, { product_id: '', quantity: 1, unit_price: 0, gst_rate: isGst ? 18 : 0, gst_amount: 0 }]);
   };
 
@@ -209,8 +234,10 @@ export default function NewSalesOrderPage() {
           delivery_contact_person: formData.delivery_contact_person || null,
           delivery_contact_phone: formData.delivery_contact_phone || null,
           delivery_charges: parseFloat(formData.delivery_charges.toString()) || 0,
+          delivery_method: formData.delivery_method || null,
           notes: formData.notes || null,
           status: 'Draft',
+          is_gst: isGstOrder,
           subtotal: subtotal,
           gst_amount: gstAmount,
           total_amount: grandTotal
@@ -226,7 +253,7 @@ export default function NewSalesOrderPage() {
         quantity: line.quantity,
         unit_price: line.unit_price,
         gst_amount: line.gst_amount,
-        total_amount: (line.quantity * line.unit_price) + line.gst_amount
+        total_amount: Number((line.quantity * line.unit_price + line.gst_amount).toFixed(2)),
       }));
 
       const { error: linesError } = await supabase
@@ -235,7 +262,7 @@ export default function NewSalesOrderPage() {
 
       if (linesError) throw linesError;
 
-      router.push(`/sales-orders/${orderData.id}`);
+      router.push('/sales-orders');
     } catch (err: any) {
       setError(err.message || 'Failed to create sales order');
     } finally {
@@ -362,11 +389,29 @@ export default function NewSalesOrderPage() {
                   <div className="flex flex-col justify-center rounded-lg border border-primary/20 bg-primary/5 p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-semibold uppercase text-primary tracking-wider">
-                        {selectedCustomer.is_gst_customer ? 'GST Registered' : 'Non-GST Customer'}
+                        Tax Mode
                       </span>
-                      <Badge variant={selectedCustomer.is_gst_customer ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                        {selectedCustomer.is_gst_customer ? 'Tax Invoice' : 'Cash Tier'}
+                      <button
+                        type="button"
+                        onClick={() => toggleGstMode(!isGstOrder)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          isGstOrder ? 'bg-primary' : 'bg-muted-foreground/30'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform ${
+                            isGstOrder ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <Badge variant={isGstOrder ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
+                        {isGstOrder ? 'GST Invoice' : 'Cash Invoice'}
                       </Badge>
+                      <span className="text-[11px] text-muted-foreground">
+                        {isGstOrder ? `Rate: ${selectedCustomer.gstin ? 'Product GST' : 'Standard'}` : '0% GST'}
+                      </span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       {selectedCustomer.credit_limit
@@ -406,6 +451,38 @@ export default function NewSalesOrderPage() {
                     value={formData.delivery_contact_phone}
                     onChange={e => setFormData({ ...formData, delivery_contact_phone: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/40">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Delivery Method / Mode</label>
+                  <div className="flex flex-wrap items-center gap-4 pt-1">
+                    {['Porter', 'Customer Pickup', 'Self Delivery', 'Courier / Transport', 'Other'].map(method => (
+                      <label key={method} className="flex items-center gap-2 cursor-pointer text-xs font-medium">
+                        <input
+                          type="radio"
+                          name="delivery_method"
+                          value={method}
+                          checked={formData.delivery_method === method}
+                          onChange={e => setFormData({ ...formData, delivery_method: e.target.value })}
+                          className="w-4 h-4 text-primary focus:ring-primary"
+                        />
+                        <span>{method}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Receiver Contact Person</label>
+                  <input
+                    type="text"
+                    placeholder="Name of person receiving / picking up order"
+                    value={formData.delivery_contact_person}
+                    onChange={e => setFormData({ ...formData, delivery_contact_person: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
               </div>

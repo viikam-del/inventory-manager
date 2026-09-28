@@ -17,6 +17,7 @@ interface ReceiptLine {
   unit_cost: number;
   gst_amount: number;
   total_amount: number;
+  is_billed?: boolean;
   products?: {
     name: string;
     sku_code: string;
@@ -133,6 +134,8 @@ export default function ReceiptDetailPage() {
   }
 
   const subtotal = lines.reduce((acc, l) => acc + (l.quantity_received * l.unit_cost), 0);
+  const billedSubtotal = lines.reduce((acc, l) => acc + (l.is_billed !== false ? (l.quantity_received * l.unit_cost) : 0), 0);
+  const cashSubtotal = lines.reduce((acc, l) => acc + (l.is_billed === false ? (l.quantity_received * l.unit_cost) : 0), 0);
   const totalGst = lines.reduce((acc, l) => acc + (l.gst_amount || 0), 0);
   const grandTotal = subtotal + totalGst + Number(receipt.delivery_charges || 0);
 
@@ -263,6 +266,7 @@ export default function ReceiptDetailPage() {
                 <th className="px-5 py-3">SKU</th>
                 <th className="px-5 py-3 text-right">Qty Received</th>
                 <th className="px-5 py-3 text-right">Unit Cost</th>
+                <th className="px-5 py-3 text-center">Billing Mode</th>
                 <th className="px-5 py-3 text-right">Input GST</th>
                 <th className="px-5 py-3 text-right">Total Line Cost</th>
               </tr>
@@ -282,6 +286,15 @@ export default function ReceiptDetailPage() {
                   <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
                     ₹{Number(l.unit_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
+                  <td className="px-5 py-3.5 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
+                      l.is_billed !== false
+                        ? 'bg-primary/10 text-primary border border-primary/20'
+                        : 'bg-orange-500/10 text-orange-600 border border-orange-500/20'
+                    }`}>
+                      {l.is_billed !== false ? 'Billed' : 'Cash'}
+                    </span>
+                  </td>
                   <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
                     ₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
@@ -297,8 +310,12 @@ export default function ReceiptDetailPage() {
         {/* Totals Summary */}
         <div className="p-4 sm:p-6 bg-muted/20 border-t border-border/60 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-            <span>Items Subtotal:</span>
-            <span className="font-mono font-medium text-foreground">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <span>Billed Subtotal:</span>
+            <span className="font-mono font-medium text-foreground">₹{billedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+            <span>Cash Subtotal (Non-GST):</span>
+            <span className="font-mono font-medium text-foreground">₹{cashSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
             <span>Total Input GST (ITC):</span>

@@ -18,6 +18,9 @@ interface Customer {
   whatsapp: string | null;
   email: string | null;
   address: string | null;
+  delivery_address: string | null;
+  delivery_contact_person: string | null;
+  delivery_contact_phone: string | null;
   gstin: string | null;
   is_gst_customer: boolean;
   is_dealer: boolean;
@@ -34,10 +37,6 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchCustomer();
-  }, [params.id]);
 
   async function fetchCustomer() {
     setLoading(true);
@@ -57,6 +56,10 @@ export default function CustomerDetailPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchCustomer();
+  }, [params.id]);
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this customer record?')) return;
@@ -147,6 +150,12 @@ export default function CustomerDetailPage() {
               </Button>
             )}
 
+            <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs">
+              <Link href={`/customers/${customer.id}/edit`}>
+                <Icons.edit className="w-3.5 h-3.5" /> Edit
+              </Link>
+            </Button>
+
             <Button
               size="sm"
               variant="ghost"
@@ -168,7 +177,7 @@ export default function CustomerDetailPage() {
               <Icons.customers className="w-4 h-4 text-primary" /> Contact Details & Identity
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4 sm:pt-0">
+          <CardContent className="space-y-6 pt-4 sm:pt-0">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div className="flex flex-col gap-1 pb-3 sm:pb-0 sm:border-0 border-b border-border/50">
                 <span className="text-xs text-muted-foreground">Contact Person</span>
@@ -187,8 +196,29 @@ export default function CustomerDetailPage() {
                 <span className="font-medium text-foreground">{customer.email || '—'}</span>
               </div>
               <div className="flex flex-col gap-1 sm:col-span-2">
-                <span className="text-xs text-muted-foreground">Address</span>
+                <span className="text-xs text-muted-foreground">Company Address</span>
                 <span className="font-medium text-foreground whitespace-pre-wrap">{customer.address || '—'}</span>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-border/50">
+              <div className="flex items-center gap-2 mb-4">
+                <Icons.delivery className="w-4 h-4 text-primary" />
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery Profile</h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">Delivery Contact</span>
+                  <span className="font-semibold text-foreground">{customer.delivery_contact_person || '—'}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">Delivery Phone</span>
+                  <span className="font-mono font-medium text-foreground">{customer.delivery_contact_phone || '—'}</span>
+                </div>
+                <div className="flex flex-col gap-1 sm:col-span-2">
+                  <span className="text-xs text-muted-foreground">Delivery Address</span>
+                  <span className="font-medium text-foreground whitespace-pre-wrap">{customer.delivery_address || '—'}</span>
+                </div>
               </div>
             </div>
           </CardContent>

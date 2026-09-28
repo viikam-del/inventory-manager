@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Icons } from '@/components/icons';
@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
-export default function NewCustomerPage() {
+export default function EditCustomerPage() {
+  const params = useParams();
+  const router = useRouter();
   const [formData, setFormData] = useState({
     company_name: '',
     contact_person: '',
@@ -33,9 +35,56 @@ export default function NewCustomerPage() {
     opening_balance: '',
     notes: ''
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitLoading, setSubmitLoading] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
+
+  async function fetchCustomer() {
+    setLoading(true);
+    try {
+      const { data, error: supabaseError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('id', params.id)
+        .single();
+
+      if (supabaseError) throw supabaseError;
+
+      if (data) {
+        setFormData({
+          company_name: data.company_name || '',
+          contact_person: data.contact_person || '',
+          phone: data.phone || '',
+          whatsapp: data.whatsapp || '',
+          email: data.email || '',
+          address_line1: data.address_line1 || data.address || '',
+          address_line2: data.address_line2 || '',
+          city: data.city || '',
+          state: data.state || '',
+          pincode: data.pincode || '',
+          delivery_contact_person: data.delivery_contact_person || '',
+          delivery_contact_phone: data.delivery_contact_phone || '',
+          delivery_address: data.delivery_address || '',
+          same_as_company_address: false,
+          gstin: data.gstin || '',
+          is_gst_customer: data.is_gst_customer || false,
+          is_dealer: data.is_dealer || false,
+          default_due_days: data.default_due_days || 7,
+          credit_limit: data.credit_limit?.toString() || '',
+          opening_balance: data.opening_balance?.toString() || '',
+          notes: data.notes || '',
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load customer details');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchCustomer();
+  }, [params.id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -59,7 +108,7 @@ export default function NewCustomerPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitLoading(true);
     setError('');
 
     const data = {
@@ -81,21 +130,37 @@ export default function NewCustomerPage() {
       notes: formData.notes,
     };
 
-    const { error: supabaseError } = await supabase.from('customers').insert([data]);
+    const { error: supabaseError } = await supabase
+      .from('customers')
+      .update(data)
+      .eq('id', params.id);
 
     if (supabaseError) {
       setError(supabaseError.message);
     } else {
-      router.push('/customers');
+      router.push(`/customers/${params.id}`);
     }
-    setLoading(false);
+    setSubmitLoading(false);
   };
+
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading customer data...</p>
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
       <PageHeader
-        title="Add New Customer"
-        description="Fill in the details to add a new B2B customer to your database"
+        title="Edit Customer"
+        description="Update customer details and delivery preferences"
         backHref="/customers"
       />
 
@@ -436,16 +501,16 @@ export default function NewCustomerPage() {
           <Button variant="outline" asChild>
             <Link href="/customers">Cancel</Link>
           </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? (
+          <Button type="submit" disabled={submitLoading}>
+            {submitLoading ? (
               <>
                 <Icons.refresh className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                Creating...
+                Updating...
               </>
             ) : (
               <>
-                <Icons.add className="w-3.5 h-3.5 mr-1.5" />
-                Create Customer
+                <Icons.save className="w-3.5 h-3.5 mr-1.5" />
+                Update Customer
               </>
             )}
           </Button>

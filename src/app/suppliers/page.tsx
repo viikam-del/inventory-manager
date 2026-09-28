@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useDeferredValue } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -24,6 +24,8 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -48,9 +50,26 @@ export default function SuppliersPage() {
     }
   }
 
+  const handleDeleteSupplier = async (supplierId: string) => {
+    if (!confirm('Are you sure you want to delete this supplier?')) return;
+    setActionLoading(supplierId);
+    try {
+      const { error: deleteError } = await supabase
+        .from('suppliers')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .eq('id', supplierId);
+
+      if (deleteError) throw deleteError;
+      setSuppliers(prev => prev.filter(s => s.id !== supplierId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete supplier');
+      setActionLoading(null);
+    }
+  };
+
   const filteredSuppliers = suppliers.filter(s =>
-    s.company_name.toLowerCase().includes(search.toLowerCase()) ||
-    s.phone.includes(search)
+    s.company_name.toLowerCase().includes(deferredSearch.toLowerCase()) ||
+    s.phone.includes(deferredSearch)
   );
 
   return (
@@ -151,11 +170,28 @@ export default function SuppliersPage() {
                         {supplier.default_credit_days} days
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Button variant="outline" size="sm" asChild className="h-7 text-xs">
-                          <Link href={`/suppliers/${supplier.id}`}>
-                            View <Icons.forward className="w-3 h-3 ml-1" />
-                          </Link>
-                        </Button>
+                        <div className="flex justify-end items-center gap-1">
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="View Supplier">
+                            <Link href={`/suppliers/${supplier.id}`}>
+                              <Icons.eye className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="Edit Supplier">
+                            <Link href={`/suppliers/${supplier.id}/edit`}>
+                              <Icons.edit className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteSupplier(supplier.id)}
+                            disabled={actionLoading === supplier.id}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            title="Delete Supplier"
+                          >
+                            <Icons.trash className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -165,7 +201,7 @@ export default function SuppliersPage() {
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Icons.search className="w-8 h-8 text-muted-foreground/60" />
                         <p className="font-medium text-sm">No suppliers found matching your search.</p>
-                        {search && (
+                        {deferredSearch && (
                           <Button variant="outline" size="sm" onClick={() => setSearch('')}>
                             Clear Search
                           </Button>

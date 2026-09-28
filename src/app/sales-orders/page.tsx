@@ -28,6 +28,8 @@ export default function SalesOrdersPage() {
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState<string>('All');
 
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
   useEffect(() => {
     fetchOrders();
   }, []);
@@ -55,6 +57,41 @@ export default function SalesOrdersPage() {
       setLoading(false);
     }
   }
+
+  const handleConfirmOrder = async (orderId: string) => {
+    if (!confirm('Confirm this sales order?')) return;
+    setActionLoading(orderId);
+    try {
+      const { error: confirmError } = await supabase
+        .from('sales_orders')
+        .update({ status: 'Confirmed' })
+        .eq('id', orderId);
+
+      if (confirmError) throw confirmError;
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Confirmed' } : o));
+    } catch (err: any) {
+      alert(err.message || 'Failed to confirm order');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to delete this sales order?')) return;
+    setActionLoading(orderId);
+    try {
+      const { error: deleteError } = await supabase
+        .from('sales_orders')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .eq('id', orderId);
+
+      if (deleteError) throw deleteError;
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete order');
+      setActionLoading(null);
+    }
+  };
 
   const filteredOrders = orders.filter(o => {
     const matchesSearch =
@@ -258,11 +295,44 @@ export default function SalesOrdersPage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Button variant="outline" size="sm" asChild className="h-7 text-xs">
-                          <Link href={`/sales-orders/${order.id}`}>
-                            View Order <Icons.forward className="w-3 h-3 ml-1" />
-                          </Link>
-                        </Button>
+                        <div className="flex justify-end items-center gap-1">
+                          {order.status === 'Draft' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleConfirmOrder(order.id)}
+                              disabled={actionLoading === order.id}
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 dark:hover:text-emerald-400"
+                              title="Confirm Order"
+                            >
+                              {actionLoading === order.id ? (
+                                <Icons.refresh className="w-4 h-4 animate-spin text-emerald-600" />
+                              ) : (
+                                <Icons.success className="w-4 h-4 text-emerald-600" />
+                              )}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="View Order">
+                            <Link href={`/sales-orders/${order.id}`}>
+                              <Icons.eye className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="Edit Order">
+                            <Link href={`/sales-orders/${order.id}?edit=true`}>
+                              <Icons.edit className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteOrder(order.id)}
+                            disabled={actionLoading === order.id}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            title="Delete Order"
+                          >
+                            <Icons.trash className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

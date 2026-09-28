@@ -56,6 +56,34 @@ export default function PurchaseOrdersPage() {
     }
   }
 
+  const handleConfirmPO = async (id: string) => {
+    if (!confirm('Confirm this Purchase Order?')) return;
+    try {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({ status: 'Ordered' })
+        .eq('id', id);
+      if (error) throw error;
+      fetchPOs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to confirm PO');
+    }
+  };
+
+  const handleDeletePO = async (id: string) => {
+    if (!confirm('Delete this Purchase Order? This will move it to the archive.')) return;
+    try {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+      fetchPOs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete PO');
+    }
+  };
+
   const filteredPOs = pos.filter(po => {
     const matchesSearch =
       po.po_number.toLowerCase().includes(deferredSearch.toLowerCase()) ||
@@ -212,11 +240,38 @@ export default function PurchaseOrdersPage() {
                         {getStatusBadge(po.status)}
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Button variant="outline" size="sm" asChild className="h-7 text-xs">
-                          <Link href={`/purchase-orders/${po.id}`}>
-                            View PO <Icons.forward className="w-3 h-3 ml-1" />
-                          </Link>
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="View PO">
+                            <Link href={`/purchase-orders/${po.id}`}>
+                              <Icons.eye className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="Edit PO">
+                            <Link href={`/purchase-orders/${po.id}/edit`}>
+                              <Icons.edit className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          {po.status !== 'Received' && po.status !== 'Ordered' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleConfirmPO(po.id)}
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600"
+                              title="Confirm Order"
+                            >
+                              <Icons.check className="w-4 h-4" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeletePO(po.id)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            title="Delete PO"
+                          >
+                            <Icons.trash className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

@@ -26,6 +26,7 @@ export default function CustomersPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -49,6 +50,23 @@ export default function CustomersPage() {
       setLoading(false);
     }
   }
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!confirm('Are you sure you want to delete this customer?')) return;
+    setActionLoading(customerId);
+    try {
+      const { error: deleteError } = await supabase
+        .from('customers')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .eq('id', customerId);
+
+      if (deleteError) throw deleteError;
+      setCustomers(prev => prev.filter(c => c.id !== customerId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete customer');
+      setActionLoading(null);
+    }
+  };
 
   const filteredCustomers = customers.filter(c =>
     c.company_name.toLowerCase().includes(deferredSearch.toLowerCase()) ||
@@ -153,11 +171,28 @@ export default function CustomersPage() {
                         {customer.credit_limit ? `₹${customer.credit_limit.toLocaleString('en-IN')}` : <span className="text-muted-foreground italic font-normal text-xs">No Limit</span>}
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Button variant="outline" size="sm" asChild className="h-7 text-xs">
-                          <Link href={`/customers/${customer.id}`}>
-                            View <Icons.forward className="w-3 h-3 ml-1" />
-                          </Link>
-                        </Button>
+                        <div className="flex justify-end items-center gap-1">
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="View Customer">
+                            <Link href={`/customers/${customer.id}`}>
+                              <Icons.eye className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="Edit Customer">
+                            <Link href={`/customers/${customer.id}/edit`}>
+                              <Icons.edit className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteCustomer(customer.id)}
+                            disabled={actionLoading === customer.id}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            title="Delete Customer"
+                          >
+                            <Icons.trash className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

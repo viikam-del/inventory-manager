@@ -34,6 +34,8 @@ interface SalesOrder {
   delivery_address: string | null;
   delivery_contact_person: string | null;
   delivery_contact_phone: string | null;
+  delivery_method: string | null;
+  is_gst: boolean;
   delivery_charges: number;
   notes: string | null;
   status: 'Draft' | 'Confirmed' | 'Partially Delivered' | 'Delivered' | 'Invoiced' | 'Cancelled';
@@ -94,6 +96,14 @@ export default function SalesOrderDetailPage() {
       setLoading(false);
     }
   }
+
+  const getTaxModeBadge = (isGst: boolean) => {
+    return isGst ? (
+      <Badge variant="success" className="text-[10px] px-1.5 py-0">Tax Invoice (GST)</Badge>
+    ) : (
+      <Badge variant="outline" className="text-[10px] px-1.5 py-0">Cash / Non-GST</Badge>
+    );
+  };
 
   // Fulfill / Mark as Delivered and decrement inventory
   const handleMarkDelivered = async () => {
@@ -403,9 +413,12 @@ export default function SalesOrderDetailPage() {
             </div>
             <div className="pt-2 border-t border-border/40 text-xs flex justify-between items-center">
               <span className="text-muted-foreground">Billing Classification:</span>
-              <Badge variant={order.customers?.is_gst_customer ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                {order.customers?.is_gst_customer ? 'GST Registered' : 'Cash / Non-GST'}
-              </Badge>
+              <div className="flex gap-2">
+                {getTaxModeBadge(order.is_gst)}
+                <Badge variant={order.customers?.is_gst_customer ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
+                  {order.customers?.is_gst_customer ? 'GST Registered' : 'Cash / Non-GST'}
+                </Badge>
+              </div>
             </div>
             {order.customers?.gstin && (
               <div className="text-xs flex justify-between items-center font-mono">
@@ -424,6 +437,12 @@ export default function SalesOrderDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2.5 pt-0 text-xs">
             <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Delivery Method:</span>
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-medium">
+                {order.delivery_method || 'Not Specified'}
+              </Badge>
+            </div>
+            <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Order Date:</span>
               <span className="font-medium text-foreground">
                 {new Date(order.order_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -441,6 +460,18 @@ export default function SalesOrderDetailPage() {
               <span className="text-muted-foreground">Site Address:</span>
               <span className="font-medium text-foreground text-right max-w-[240px]">
                 {order.delivery_address || 'Registered Billing Address'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Delivery Contact:</span>
+              <span className="font-medium text-foreground text-right">
+                {order.delivery_contact_person || '—'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Delivery Phone:</span>
+              <span className="font-mono font-medium text-foreground text-right">
+                {order.delivery_contact_phone || '—'}
               </span>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-border/40">

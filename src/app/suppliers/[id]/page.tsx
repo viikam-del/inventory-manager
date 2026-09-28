@@ -124,6 +124,12 @@ export default function SupplierDetailPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs">
+              <Link href={`/suppliers/${supplier.id}/edit`}>
+                <Icons.edit className="w-3.5 h-3.5" /> Edit Supplier
+              </Link>
+            </Button>
+
             <Button variant="outline" size="sm" onClick={() => window.print()} className="h-8 gap-1.5 text-xs">
               <Icons.print className="w-3.5 h-3.5" /> Print / PDF
             </Button>

@@ -16,6 +16,7 @@ interface POLine {
   quantity: number;
   unit_cost: number;
   gst_amount: number;
+  is_billed: boolean;
   total_amount: number;
   products?: {
     name: string;
@@ -60,10 +61,6 @@ export default function PurchaseOrderDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchPODetails();
-  }, [params.id]);
-
   async function fetchPODetails() {
     setLoading(true);
     try {
@@ -104,6 +101,10 @@ export default function PurchaseOrderDetailPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchPODetails();
+  }, [params.id]);
 
   const handleCancelPO = async () => {
     if (!confirm('Are you sure you want to cancel this Purchase Order?')) return;
@@ -173,6 +174,8 @@ export default function PurchaseOrderDetailPage() {
   }
 
   const subtotal = lines.reduce((acc, l) => acc + (l.quantity * l.unit_cost), 0);
+  const billedSubtotal = lines.reduce((acc, l) => acc + (l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
+  const cashSubtotal = lines.reduce((acc, l) => acc + (!l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
   const totalGst = lines.reduce((acc, l) => acc + (l.gst_amount || 0), 0);
   const grandTotal = subtotal + totalGst + Number(po.delivery_charges || 0);
 
@@ -332,6 +335,7 @@ export default function PurchaseOrderDetailPage() {
                 <th className="px-5 py-3">SKU</th>
                 <th className="px-5 py-3 text-right">Quantity</th>
                 <th className="px-5 py-3 text-right">Unit Cost</th>
+                <th className="px-5 py-3 text-center">Billing Mode</th>
                 <th className="px-5 py-3 text-right">Input GST</th>
                 <th className="px-5 py-3 text-right">Total Cost</th>
               </tr>
@@ -351,6 +355,15 @@ export default function PurchaseOrderDetailPage() {
                   <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
                     ₹{Number(l.unit_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
+                  <td className="px-5 py-3.5 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
+                      l.is_billed
+                        ? 'bg-primary/10 text-primary border border-primary/20'
+                        : 'bg-orange-500/10 text-orange-600 border border-orange-500/20'
+                    }`}>
+                      {l.is_billed ? 'Billed' : 'Cash'}
+                    </span>
+                  </td>
                   <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
                     ₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
@@ -366,8 +379,12 @@ export default function PurchaseOrderDetailPage() {
         {/* Totals Summary */}
         <div className="p-4 sm:p-6 bg-muted/20 border-t border-border/60 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-            <span>Items Subtotal:</span>
-            <span className="font-mono font-medium text-foreground">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            <span>Billed Subtotal:</span>
+            <span className="font-mono font-medium text-foreground">₹{billedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+            <span>Cash Subtotal (Non-GST):</span>
+            <span className="font-mono font-medium text-foreground">₹{cashSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
             <span>Total Input GST (ITC):</span>

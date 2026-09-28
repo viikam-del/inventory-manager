@@ -3,6 +3,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Box,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -71,9 +72,12 @@ export const Icons = {
   trash: Trash2,
   refresh: RefreshCw,
   edit: Pencil,
+  save: PackageCheck,
+  eye: Search,
   purchaseOrders: Receipt,
 
   // Status icons
+  check: Check,
   success: CheckCircle2,
   warning: AlertTriangle,
   info: FileText,

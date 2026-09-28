@@ -31,6 +31,7 @@ interface ReceiptLineItem {
   unit_cost: number;
   gst_rate: number;
   gst_amount: number;
+  is_billed?: boolean;
 }
 
 function NewReceiptForm() {
@@ -55,7 +56,7 @@ function NewReceiptForm() {
   });
 
   const [lines, setLines] = useState<ReceiptLineItem[]>([
-    { product_id: '', quantity_received: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0 }
+    { product_id: '', quantity_received: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0, is_billed: true }
   ]);
 
   useEffect(() => {
@@ -90,13 +91,15 @@ function NewReceiptForm() {
             if (poData.purchase_order_lines && poData.purchase_order_lines.length > 0) {
               const prefilledLines: ReceiptLineItem[] = poData.purchase_order_lines.map((l: any) => {
                 const prod = (productsRes.data || []).find(p => p.id === l.product_id);
-                const gstRate = Number(prod?.gst_rate) || 18;
+                const isBilled = l.is_billed !== undefined ? Boolean(l.is_billed) : true;
+                const gstRate = isBilled ? (Number(prod?.gst_rate) || 18) : 0;
                 return {
                   product_id: l.product_id,
                   quantity_received: Number(l.quantity),
                   unit_cost: Number(l.unit_cost),
                   gst_rate: gstRate,
-                  gst_amount: Number(l.gst_amount || 0)
+                  gst_amount: isBilled ? Number(l.gst_amount || 0) : 0,
+                  is_billed: isBilled
                 };
               });
               setLines(prefilledLines);
@@ -120,13 +123,16 @@ function NewReceiptForm() {
       const unitCost = Number(selectedProd.price_non_gst) || 0;
       const gstRate = Number(selectedProd.gst_rate) || 18;
       const qty = updated[index].quantity_received || 1;
-      const gstAmt = (qty * unitCost * gstRate) / 100;
+      const isBilled = updated[index].is_billed !== undefined ? updated[index].is_billed : true;
+      const calcRate = isBilled ? gstRate : 0;
+      const gstAmt = (qty * unitCost * calcRate) / 100;
       updated[index] = {
         product_id: productId,
         quantity_received: qty,
         unit_cost: unitCost,
         gst_rate: gstRate,
-        gst_amount: Number(gstAmt.toFixed(2))
+        gst_amount: Number(gstAmt.toFixed(2)),
+        is_billed: isBilled
       };
     } else {
       updated[index].product_id = '';
@@ -134,25 +140,28 @@ function NewReceiptForm() {
     setLines(updated);
   };
 
-  const handleLineChange = (index: number, field: keyof ReceiptLineItem, value: number) => {
+  const handleLineChange = (index: number, field: keyof ReceiptLineItem, value: any) => {
     const updated = [...lines];
     updated[index] = {
       ...updated[index],
       [field]: value
     };
 
-    if (field === 'quantity_received' || field === 'unit_cost' || field === 'gst_rate') {
+    if (field === 'quantity_received' || field === 'unit_cost' || field === 'gst_rate' || field === 'is_billed') {
       const qty = field === 'quantity_received' ? value : updated[index].quantity_received;
       const cost = field === 'unit_cost' ? value : updated[index].unit_cost;
       const rate = field === 'gst_rate' ? value : updated[index].gst_rate;
-      updated[index].gst_amount = Number(((qty * cost * rate) / 100).toFixed(2));
+      const billed = field === 'is_billed' ? value : (updated[index].is_billed !== undefined ? updated[index].is_billed : true);
+
+      const calcRate = billed ? rate : 0;
+      updated[index].gst_amount = Number(((qty * cost * calcRate) / 100).toFixed(2));
     }
 
     setLines(updated);
   };
 
   const addLine = () => {
-    setLines(prev => [...prev, { product_id: '', quantity_received: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0 }]);
+    setLines(prev => [...prev, { product_id: '', quantity_received: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0, is_billed: true }]);
   };
 
   const removeLine = (index: number) => {
@@ -162,6 +171,14 @@ function NewReceiptForm() {
 
   const calculateSubtotal = () => {
     return lines.reduce((acc, l) => acc + (l.quantity_received * l.unit_cost), 0);
+  };
+
+  const calculateBilledSubtotal = () => {
+    return lines.reduce((acc, l) => acc + (l.is_billed !== false ? (l.quantity_received * l.unit_cost) : 0), 0);
+  };
+
+  const calculateCashSubtotal = () => {
+    return lines.reduce((acc, l) => acc + (l.is_billed === false ? (l.quantity_received * l.unit_cost) : 0), 0);
   };
 
   const calculateTotalGST = () => {
@@ -208,7 +225,8 @@ function NewReceiptForm() {
         product_id: line.product_id,
         quantity_received: line.quantity_received,
         unit_cost: line.unit_cost,
-        gst_amount: line.gst_amount
+        gst_amount: line.gst_amount,
+        is_billed: line.is_billed
       }));
 
       const { error: linesError } = await supabase
@@ -256,7 +274,7 @@ function NewReceiptForm() {
           .eq('id', formData.purchase_order_id);
       }
 
-      router.push(`/receipts/${receiptData.id}`);
+      router.push('/receipts');
     } catch (err: any) {
       setError(err.message || 'Failed to record Goods Received Note');
     } finally {
@@ -393,6 +411,7 @@ function NewReceiptForm() {
                     <th className="px-4 py-2.5 min-w-[220px]">Product</th>
                     <th className="px-3 py-2.5 w-28">Qty Received</th>
                     <th className="px-3 py-2.5 w-32">Unit Cost (₹)</th>
+                    <th className="px-3 py-2.5 w-28 text-center">Billing Mode</th>
                     <th className="px-3 py-2.5 w-24">GST %</th>
                     <th className="px-3 py-2.5 w-28 text-right">GST (₹)</th>
                     <th className="px-4 py-2.5 w-32 text-right">Line Total</th>
@@ -442,6 +461,19 @@ function NewReceiptForm() {
                             className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </td>
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleLineChange(idx, 'is_billed', !line.is_billed)}
+                            className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-colors ${
+                              line.is_billed
+                                ? 'bg-primary/15 text-primary border border-primary/30'
+                                : 'bg-orange-500/15 text-orange-600 border border-orange-500/30'
+                            }`}
+                          >
+                            {line.is_billed ? 'Billed' : 'Cash'}
+                          </button>
+                        </td>
                         <td className="px-3 py-3">
                           <input
                             type="number"
@@ -449,7 +481,8 @@ function NewReceiptForm() {
                             step="1"
                             value={line.gst_rate}
                             onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            disabled={!line.is_billed}
+                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                           />
                         </td>
                         <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground">
@@ -478,11 +511,15 @@ function NewReceiptForm() {
             {/* Financial Summary */}
             <div className="border-t border-border/60 p-4 sm:p-6 bg-muted/20 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
               <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-                <span>Items Subtotal:</span>
-                <span className="font-mono font-medium text-foreground">₹{calculateSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <span>Billed Subtotal:</span>
+                <span className="font-mono font-medium text-foreground">₹{calculateBilledSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-                <span>Total Input GST:</span>
+                <span>Cash Subtotal (Non-GST):</span>
+                <span className="font-mono font-medium text-foreground">₹{calculateCashSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+                <span>Total Input GST (ITC):</span>
                 <span className="font-mono font-medium text-foreground">₹{calculateTotalGST().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
               {formData.delivery_charges > 0 && (

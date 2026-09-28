@@ -26,6 +26,7 @@ interface DeliveryOrder {
   status: 'Confirmed' | 'Partially Delivered' | 'Delivered';
   total_amount: number;
   customer_id: string;
+  delivery_method?: string;
   customers?: {
     company_name: string;
     phone: string;
@@ -72,6 +73,7 @@ export default function StaffDeliveriesPage() {
           status,
           total_amount,
           customer_id,
+          delivery_method,
           customers (company_name, phone),
           sales_order_lines (id, quantity, product_id, products (name, unit))
         `)
@@ -298,6 +300,12 @@ export default function StaffDeliveriesPage() {
                       <div className="flex items-center gap-2">
                         <Icons.phone className="w-4 h-4 text-slate-400" />
                         <span>{order.customers?.phone || 'No phone'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500">Method:</span>
+                        <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0">
+                          {order.delivery_method || 'Not Specified'}
+                        </Badge>
                       </div>
                       {order.customers?.phone && (
                         <a

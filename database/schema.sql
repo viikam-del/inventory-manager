@@ -113,6 +113,8 @@ CREATE TABLE purchase_orders (
   delivery_charges DECIMAL(10,2) DEFAULT 0,
   notes TEXT,
   status VARCHAR(20) DEFAULT 'Ordered' CHECK (status IN ('Ordered', 'Partially Received', 'Received', 'Cancelled')),
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH Time Zone DEFAULT NOW()
 );
@@ -140,6 +142,8 @@ CREATE TABLE receipts (
   delivery_charges DECIMAL(10,2) DEFAULT 0,
   notes TEXT,
   status VARCHAR(20) DEFAULT 'Received' CHECK (status IN ('Received', 'Partially Received')),
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH Time Zone DEFAULT NOW()
 );
@@ -165,8 +169,13 @@ CREATE TABLE sales_orders (
   order_date DATE NOT NULL,
   delivery_address TEXT,
   expected_delivery_date DATE,
+  tally_invoice_number VARCHAR(100),
   notes TEXT,
+  total_amount DECIMAL(12,2) DEFAULT 0,
+  gst_amount DECIMAL(12,2) DEFAULT 0,
   status VARCHAR(20) DEFAULT 'Draft' CHECK (status IN ('Draft', 'Confirmed', 'Partially Delivered', 'Delivered', 'Invoiced', 'Cancelled')),
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH Time Zone DEFAULT NOW()
 );
@@ -194,6 +203,8 @@ CREATE TABLE payments (
   method VARCHAR(20) NOT NULL CHECK (method IN ('Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Other')),
   reference_number VARCHAR(100),
   notes TEXT,
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH Time Zone DEFAULT NOW()
 );
