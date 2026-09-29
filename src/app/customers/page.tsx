@@ -18,6 +18,9 @@ interface Customer {
   is_gst_customer: boolean;
   credit_limit: number | null;
   opening_balance: number;
+  sales_orders?: any[];
+  payments?: any[];
+  _outstanding_balance?: number;
 }
 
 export default function CustomersPage() {
@@ -38,12 +41,39 @@ export default function CustomersPage() {
     try {
       const { data, error: supabaseError } = await supabase
         .from('customers')
-        .select('id, company_name, contact_person, phone, is_gst_customer, credit_limit, opening_balance')
+        .select(`
+          id, company_name, contact_person, phone, is_gst_customer, credit_limit, opening_balance,
+          sales_orders ( total_amount, gst_amount, is_deleted ),
+          payments ( amount, is_deleted )
+        `)
         .eq('is_deleted', false)
         .order('company_name', { ascending: true }).limit(1000);
 
       if (supabaseError) throw supabaseError;
-      setCustomers(data || []);
+
+      const enrichedData = (data || []).map((c: any) => {
+        let totalSales = 0;
+        let totalPayments = 0;
+
+        if (c.sales_orders) {
+          totalSales = c.sales_orders
+            .filter((o: any) => !o.is_deleted)
+            .reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0) + (Number(o.gst_amount) || 0), 0);
+        }
+
+        if (c.payments) {
+          totalPayments = c.payments
+            .filter((p: any) => !p.is_deleted)
+            .reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        }
+
+        return {
+          ...c,
+          _outstanding_balance: Number(c.opening_balance || 0) + totalSales - totalPayments
+        };
+      });
+
+      setCustomers(enrichedData);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch customers');
     } finally {
@@ -140,7 +170,7 @@ export default function CustomersPage() {
                   <th className="px-5 py-3">Company Name</th>
                   <th className="px-5 py-3">Contact Person</th>
                   <th className="px-5 py-3">Phone</th>
-                  <th className="px-5 py-3">GST Status</th>
+                  <th className="px-5 py-3 text-right">Outstanding</th>
                   <th className="px-5 py-3">Credit Limit</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
@@ -153,6 +183,11 @@ export default function CustomersPage() {
                         <Link href={`/customers/${customer.id}`} className="hover:text-primary hover:underline">
                           {customer.company_name}
                         </Link>
+                        {customer.is_gst_customer && (
+                          <div className="mt-0.5">
+                            <Badge variant="success" className="text-[9px] px-1.5 py-0">GST</Badge>
+                          </div>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-muted-foreground">
                         {customer.contact_person || '—'}
@@ -160,12 +195,13 @@ export default function CustomersPage() {
                       <td className="px-5 py-3.5 font-mono text-muted-foreground">
                         {customer.phone}
                       </td>
-                      <td className="px-5 py-3.5">
-                        {customer.is_gst_customer ? (
-                          <Badge variant="success">GST Registered</Badge>
-                        ) : (
-                          <Badge variant="outline">Non-GST</Badge>
-                        )}
+                      <td className="px-5 py-3.5 text-right font-medium text-foreground">
+                        <span className={customer._outstanding_balance && customer._outstanding_balance > 0 ? "text-destructive" : "text-success"}>
+                          {customer._outstanding_balance && customer._outstanding_balance < 0 ?
+                            `₹${Math.abs(customer._outstanding_balance).toLocaleString('en-IN')} (Cr)` :
+                            `₹${(customer._outstanding_balance || 0).toLocaleString('en-IN')}`
+                          }
+                        </span>
                       </td>
                       <td className="px-5 py-3.5 font-medium text-foreground">
                         {customer.credit_limit ? `₹${customer.credit_limit.toLocaleString('en-IN')}` : <span className="text-muted-foreground italic font-normal text-xs">No Limit</span>}

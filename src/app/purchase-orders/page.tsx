@@ -16,6 +16,7 @@ interface PurchaseOrder {
   supplier_name?: string;
   order_date: string;
   expected_delivery_date: string | null;
+  delivery_charges?: number;
   status: 'Ordered' | 'Partially Received' | 'Received' | 'Cancelled';
   created_at: string;
 }
@@ -23,6 +24,7 @@ interface PurchaseOrder {
 export default function PurchaseOrdersPage() {
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -37,7 +39,7 @@ export default function PurchaseOrdersPage() {
     try {
       const { data, error: supabaseError } = await supabase
         .from('purchase_orders')
-        .select('id, po_number, supplier_id, order_date, expected_delivery_date, status, created_at, suppliers(company_name)')
+        .select('id, po_number, supplier_id, order_date, expected_delivery_date, status, created_at, delivery_charges, suppliers(company_name)')
         .eq('is_deleted', false)
         .order('created_at', { ascending: false }).limit(1000);
 
@@ -56,17 +58,131 @@ export default function PurchaseOrdersPage() {
     }
   }
 
-  const handleConfirmPO = async (id: string) => {
-    if (!confirm('Confirm this Purchase Order?')) return;
+  const handleConfirmReceivedPO = async (po: PurchaseOrder) => {
+    if (po.status === 'Received') {
+      alert(`Purchase Order ${po.po_number} has already been marked as Received.`);
+      return;
+    }
+
+    if (!confirm(`Mark Purchase Order ${po.po_number} as fully received?\n\nThis will automatically:\n1. Generate a Goods Received Note (GRN)\n2. Add all ordered quantities into inventory stock\n3. Record stock adjustment audit logs\n4. Update status to "Received"`)) {
+      return;
+    }
+
+    setActionLoading(po.id);
     try {
-      const { error } = await supabase
+      // 1. Fetch line items
+      const { data: lines, error: linesError } = await supabase
+        .from('purchase_order_lines')
+        .select('id, product_id, quantity, unit_cost, gst_amount, is_billed')
+        .eq('purchase_order_id', po.id);
+
+      if (linesError) throw linesError;
+      if (!lines || lines.length === 0) {
+        throw new Error('This purchase order has no line items to receive.');
+      }
+
+      // 2. Generate sequential GRN number
+      let receiptNumber = `GRN-${Date.now().toString().slice(-6)}`;
+      try {
+        const { data: lastReceiptData } = await supabase
+          .from('receipts')
+          .select('receipt_number')
+          .not('receipt_number', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (lastReceiptData && lastReceiptData.length > 0 && lastReceiptData[0].receipt_number) {
+          const lastGRN = lastReceiptData[0].receipt_number;
+          const match = lastGRN.match(/GRN-(\d+)/);
+          if (match && match[1]) {
+            const nextNum = parseInt(match[1], 10) + 1;
+            receiptNumber = `GRN-${String(nextNum).padStart(4, '0')}`;
+          }
+        }
+      } catch (e) {
+        console.warn('Fallback to timestamp GRN', e);
+      }
+
+      // 3. Create Goods Received Note (GRN)
+      const { data: receiptData, error: receiptError } = await supabase
+        .from('receipts')
+        .insert([{
+          receipt_number: receiptNumber,
+          receipt_date: new Date().toISOString(),
+          status: 'Received',
+          purchase_order_id: po.id,
+          supplier_id: po.supplier_id,
+          delivery_charges: po.delivery_charges || 0,
+        }])
+        .select()
+        .single();
+
+      if (receiptError) throw receiptError;
+
+      // 4. Insert receipt lines and update stock for each item
+      for (const line of lines) {
+        const { error: lineError } = await supabase
+          .from('receipt_lines')
+          .insert([{
+            receipt_id: receiptData.id,
+            product_id: line.product_id,
+            quantity_received: line.quantity,
+            unit_cost: line.unit_cost,
+            gst_amount: line.gst_amount,
+            is_billed: line.is_billed,
+          }]);
+
+        if (lineError) throw lineError;
+
+        // Fetch current stock
+        const { data: prodData, error: prodFetchError } = await supabase
+          .from('products')
+          .select('current_stock')
+          .eq('id', line.product_id)
+          .single();
+
+        if (prodFetchError) throw prodFetchError;
+
+        const currentStock = Number(prodData?.current_stock) || 0;
+        const newStock = currentStock + Number(line.quantity);
+
+        const { error: prodUpdateError } = await supabase
+          .from('products')
+          .update({ current_stock: newStock })
+          .eq('id', line.product_id);
+
+        if (prodUpdateError) throw prodUpdateError;
+
+        // Log audit adjustment
+        const { error: adjError } = await supabase
+          .from('stock_adjustments')
+          .insert([{
+            product_id: line.product_id,
+            adjustment_type: 'In',
+            quantity: line.quantity,
+            reason: `Quick Confirm PO: ${po.po_number} (GRN: ${receiptNumber})`,
+            reference_type: 'Receipt',
+            reference_id: receiptData.id
+          }]);
+
+        if (adjError) throw adjError;
+      }
+
+      // 5. Mark purchase order as 'Received'
+      const { error: poUpdateError } = await supabase
         .from('purchase_orders')
-        .update({ status: 'Ordered' })
-        .eq('id', id);
-      if (error) throw error;
-      fetchPOs();
+        .update({ status: 'Received' })
+        .eq('id', po.id);
+
+      if (poUpdateError) throw poUpdateError;
+
+      // 6. Refresh PO list
+      await fetchPOs();
+      alert(`PO ${po.po_number} marked as Received!\nCreated ${receiptNumber} and updated inventory stock.`);
     } catch (err: any) {
-      alert(err.message || 'Failed to confirm PO');
+      alert(err.message || 'Failed to confirm receipt');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -122,12 +238,20 @@ export default function PurchaseOrdersPage() {
           </Badge>
         }
         actions={
-          <Button size="sm" asChild>
-            <Link href="/purchase-orders/new">
-              <Icons.add className="w-3.5 h-3.5 mr-1.5" />
-              New Purchase Order
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <Link href="/receipts/new">
+                <Icons.in className="w-3.5 h-3.5 mr-1.5 text-emerald-600 dark:text-emerald-400" />
+                Receive GRN
+              </Link>
+            </Button>
+            <Button size="sm" asChild>
+              <Link href="/purchase-orders/new">
+                <Icons.add className="w-3.5 h-3.5 mr-1.5" />
+                New Purchase Order
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -251,17 +375,45 @@ export default function PurchaseOrdersPage() {
                               <Icons.edit className="w-4 h-4" />
                             </Link>
                           </Button>
-                          {po.status !== 'Received' && po.status !== 'Ordered' && po.status !== 'Cancelled' && (
+                          {(po.status === 'Ordered' || po.status === 'Partially Received') ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                asChild
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 dark:hover:text-emerald-400"
+                                title="Receive GRN"
+                              >
+                                <Link href={`/receipts/new?po_id=${po.id}`}>
+                                  <Icons.in className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                </Link>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleConfirmReceivedPO(po)}
+                                disabled={actionLoading === po.id}
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 dark:hover:text-emerald-400"
+                                title="Confirm Received"
+                              >
+                                {actionLoading === po.id ? (
+                                  <Icons.refresh className="w-4 h-4 animate-spin text-emerald-600" />
+                                ) : (
+                                  <Icons.check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                )}
+                              </Button>
+                            </>
+                          ) : po.status === 'Received' ? (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleConfirmPO(po.id)}
-                              className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600"
-                              title="Confirm Order"
+                              disabled
+                              className="h-8 w-8 p-0 text-emerald-600/50 bg-emerald-500/10 border border-emerald-500/20 cursor-not-allowed opacity-70"
+                              title="Stock Already Received (GRN Generated)"
                             >
-                              <Icons.check className="w-4 h-4" />
+                              <Icons.check className="w-4 h-4 text-emerald-600" />
                             </Button>
-                          )}
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="sm"

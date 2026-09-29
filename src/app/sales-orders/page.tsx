@@ -18,6 +18,7 @@ interface SalesOrder {
   status: 'Draft' | 'Confirmed' | 'Partially Delivered' | 'Delivered' | 'Invoiced' | 'Cancelled';
   total_amount: number;
   tally_invoice_number: string | null;
+  is_gst: boolean;
 }
 
 export default function SalesOrdersPage() {
@@ -39,9 +40,11 @@ export default function SalesOrdersPage() {
     try {
       const { data, error: supabaseError } = await supabase
         .from('sales_orders')
-        .select('id, order_number, customer_id, order_date, status, total_amount, tally_invoice_number, customers(company_name)')
+        .select('id, order_number, customer_id, order_date, status, total_amount, tally_invoice_number, is_gst, customers(company_name)')
         .eq('is_deleted', false)
-        .order('order_date', { ascending: false }).limit(1000);
+        .order('order_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1000);
 
       if (supabaseError) throw supabaseError;
 
@@ -93,6 +96,26 @@ export default function SalesOrdersPage() {
     }
   };
 
+  const handleSettleInvoice = async (orderId: string) => {
+    const invoiceNo = prompt('Enter Tally Invoice Number to settle and mark as Invoiced:');
+    if (!invoiceNo || invoiceNo.trim() === '') return;
+
+    setActionLoading(orderId);
+    try {
+      const { error: invoiceError } = await supabase
+        .from('sales_orders')
+        .update({ tally_invoice_number: invoiceNo.trim(), status: 'Invoiced' })
+        .eq('id', orderId);
+
+      if (invoiceError) throw invoiceError;
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, tally_invoice_number: invoiceNo.trim(), status: 'Invoiced' } : o));
+    } catch (err: any) {
+      alert(err.message || 'Failed to record invoice number');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const filteredOrders = orders.filter(o => {
     const matchesSearch =
       o.order_number.toLowerCase().includes(deferredSearch.toLowerCase()) ||
@@ -105,7 +128,7 @@ export default function SalesOrdersPage() {
   });
 
   const pendingTallyInvoices = orders.filter(
-    o => (o.status === 'Delivered' || o.status === 'Partially Delivered') && !o.tally_invoice_number
+    o => o.is_gst && (o.status === 'Delivered' || o.status === 'Partially Delivered') && !o.tally_invoice_number
   );
 
   const getStatusBadge = (status: SalesOrder['status']) => {
@@ -286,12 +309,16 @@ export default function SalesOrdersPage() {
                         {getStatusBadge(order.status)}
                       </td>
                       <td className="px-5 py-3.5 text-center">
-                        {order.tally_invoice_number ? (
-                          <span className="font-mono text-[11px] bg-muted/80 text-foreground px-2 py-0.5 rounded border border-border/50">
-                            {order.tally_invoice_number}
-                          </span>
+                        {order.is_gst ? (
+                          order.tally_invoice_number ? (
+                            <span className="font-mono text-[11px] bg-muted/80 text-foreground px-2 py-0.5 rounded border border-border/50">
+                              {order.tally_invoice_number}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs italic">—</span>
+                          )
                         ) : (
-                          <span className="text-muted-foreground text-xs italic">—</span>
+                          <span className="text-muted-foreground text-[11px] font-mono bg-muted/40 px-2 py-0.5 rounded">Cash (No Bill)</span>
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-right">
@@ -309,6 +336,22 @@ export default function SalesOrdersPage() {
                                 <Icons.refresh className="w-4 h-4 animate-spin text-emerald-600" />
                               ) : (
                                 <Icons.success className="w-4 h-4 text-emerald-600" />
+                              )}
+                            </Button>
+                          )}
+                          {order.is_gst && ['Confirmed', 'Partially Delivered', 'Delivered'].includes(order.status) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSettleInvoice(order.id)}
+                              disabled={actionLoading === order.id}
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-600 hover:bg-blue-500/10 dark:hover:text-blue-400"
+                              title="Enter Tally Invoice & Settle"
+                            >
+                              {actionLoading === order.id ? (
+                                <Icons.refresh className="w-4 h-4 animate-spin text-blue-600" />
+                              ) : (
+                                <Icons.invoice className="w-4 h-4 text-blue-600" />
                               )}
                             </Button>
                           )}

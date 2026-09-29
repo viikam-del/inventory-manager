@@ -333,10 +333,12 @@ export default function SalesOrderDetailPage() {
               </Button>
             )}
 
-            <Button size="sm" variant="secondary" onClick={() => setShowTallyModal(true)} className="h-8 text-xs">
-              <Icons.document className="w-3.5 h-3.5 mr-1.5" />
-              {order.tally_invoice_number ? `Tally: ${order.tally_invoice_number}` : 'Link Tally Invoice'}
-            </Button>
+            {order.is_gst && (
+              <Button size="sm" variant="secondary" onClick={() => setShowTallyModal(true)} className="h-8 text-xs">
+                <Icons.document className="w-3.5 h-3.5 mr-1.5" />
+                {order.tally_invoice_number ? `Tally: ${order.tally_invoice_number}` : 'Link Tally Invoice'}
+              </Button>
+            )}
 
             {order.status !== 'Delivered' && order.status !== 'Invoiced' && order.status !== 'Cancelled' && (
               <Button
@@ -364,7 +366,7 @@ export default function SalesOrderDetailPage() {
       />
 
       {/* Delivered but not invoiced alert */}
-      {order.status === 'Delivered' && !order.tally_invoice_number && (
+      {order.is_gst && order.status === 'Delivered' && !order.tally_invoice_number && (
         <Card className="border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10">
           <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div className="flex items-center gap-3">

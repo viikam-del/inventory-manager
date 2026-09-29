@@ -136,7 +136,27 @@ export default function PurchaseOrderDetailPage() {
     setActionLoading(true);
     try {
       // 1. Create a Goods Received Note (GRN) record
-      const receiptNumber = `GRN-AUTO-${Date.now().toString().slice(-6)}`;
+      let receiptNumber = `GRN-${Date.now().toString().slice(-6)}`;
+      try {
+        const { data: lastReceiptData } = await supabase
+          .from('receipts')
+          .select('receipt_number')
+          .not('receipt_number', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (lastReceiptData && lastReceiptData.length > 0 && lastReceiptData[0].receipt_number) {
+          const lastGRN = lastReceiptData[0].receipt_number;
+          const match = lastGRN.match(/GRN-(\d+)/);
+          if (match && match[1]) {
+            const nextNum = parseInt(match[1], 10) + 1;
+            receiptNumber = `GRN-${String(nextNum).padStart(4, '0')}`;
+          }
+        }
+      } catch (e) {
+        console.warn('Fallback to timestamp GRN', e);
+      }
+
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipts')
         .insert([{
@@ -144,6 +164,7 @@ export default function PurchaseOrderDetailPage() {
           receipt_date: new Date().toISOString(),
           status: 'Received',
           purchase_order_id: params.id,
+          supplier_id: po?.supplier_id || null,
           delivery_charges: po?.delivery_charges || 0,
         }])
         .select()
@@ -161,6 +182,8 @@ export default function PurchaseOrderDetailPage() {
             product_id: line.product_id,
             quantity_received: line.quantity,
             unit_cost: line.unit_cost,
+            gst_amount: line.gst_amount,
+            is_billed: line.is_billed,
           }]);
 
         if (lineError) throw lineError;
@@ -321,7 +344,17 @@ export default function PurchaseOrderDetailPage() {
               </a>
             </Button>
 
-            {po.status !== 'Received' && po.status !== 'Cancelled' && (
+            {po.status === 'Received' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled
+                className="h-8 gap-1.5 text-xs bg-emerald-500/10 text-emerald-600 border-emerald-500/30 opacity-70 cursor-not-allowed font-medium"
+                title="Stock has already been received for this Purchase Order"
+              >
+                <Icons.check className="w-3.5 h-3.5" /> Stock Already Received
+              </Button>
+            ) : po.status !== 'Cancelled' ? (
               <>
                 <Button size="sm" variant="success" asChild className="h-8 gap-1.5 text-xs">
                   <Link href={`/receipts/new?po_id=${po.id}`}>
@@ -347,7 +380,7 @@ export default function PurchaseOrderDetailPage() {
                   Cancel
                 </Button>
               </>
-            )}
+            ) : null}
 
             <Button
               size="sm"

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Icons } from '@/components/icons';
@@ -15,8 +15,11 @@ interface Customer {
   opening_balance: number;
 }
 
-export default function NewPaymentPage() {
+function PaymentFormContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialCustomerId = searchParams.get('customer') || '';
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -24,7 +27,7 @@ export default function NewPaymentPage() {
 
   const [formData, setFormData] = useState({
     payment_number: 'Generating...',
-    customer_id: '',
+    customer_id: initialCustomerId,
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
     payment_method: 'UPI',
@@ -37,7 +40,7 @@ export default function NewPaymentPage() {
       try {
         const [customersRes, lastPaymentRes] = await Promise.all([
           supabase.from('customers').select('id, company_name, opening_balance').eq('is_deleted', false).order('company_name'),
-          supabase.from('payments').select('payment_number').order('created_at', { ascending: false }).limit(1)
+          supabase.from('payments').select('payment_number').not('payment_number', 'is', null).order('payment_number', { ascending: false }).limit(1)
         ]);
 
         if (customersRes.error) throw customersRes.error;
@@ -48,12 +51,12 @@ export default function NewPaymentPage() {
           const match = lastPAY.match(/PAY-(\d+)/);
           if (match && match[1]) {
             const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, payment_number: `PAY-${nextNum}` }));
+            setFormData(prev => ({ ...prev, payment_number: `PAY-${String(nextNum).padStart(4, '0')}` }));
           } else {
-            setFormData(prev => ({ ...prev, payment_number: `PAY-${Date.now().toString().slice(-6)}` }));
+            setFormData(prev => ({ ...prev, payment_number: `PAY-${Date.now().toString().slice(-4)}` }));
           }
         } else {
-          setFormData(prev => ({ ...prev, payment_number: `PAY-100001` }));
+          setFormData(prev => ({ ...prev, payment_number: `PAY-0001` }));
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load form data');
@@ -254,5 +257,22 @@ export default function NewPaymentPage() {
         </div>
       </form>
     </PageContainer>
+  );
+}
+
+export default function NewPaymentPage() {
+  return (
+    <Suspense fallback={
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading form...</p>
+          </div>
+        </div>
+      </PageContainer>
+    }>
+      <PaymentFormContent />
+    </Suspense>
   );
 }

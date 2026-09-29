@@ -77,12 +77,12 @@ export default function NewPurchaseOrderPage() {
           const match = lastPO.match(/PO-(\d+)/);
           if (match && match[1]) {
             const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, po_number: `PO-${nextNum}` }));
+            setFormData(prev => ({ ...prev, po_number: `PO-${String(nextNum).padStart(4, '0')}` }));
           } else {
-            setFormData(prev => ({ ...prev, po_number: `PO-${Date.now().toString().slice(-6)}` }));
+            setFormData(prev => ({ ...prev, po_number: `PO-${Date.now().toString().slice(-4)}` }));
           }
         } else {
-          setFormData(prev => ({ ...prev, po_number: `PO-100001` }));
+          setFormData(prev => ({ ...prev, po_number: `PO-0001` }));
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load suppliers or products');

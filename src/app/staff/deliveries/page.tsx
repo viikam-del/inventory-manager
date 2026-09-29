@@ -23,10 +23,12 @@ interface DeliveryOrder {
   id: string;
   order_number: string;
   order_date: string;
-  status: 'Confirmed' | 'Partially Delivered' | 'Delivered';
+  status: 'Confirmed' | 'Partially Delivered' | 'Delivered' | 'Invoiced';
   total_amount: number;
   customer_id: string;
   delivery_method?: string;
+  tally_invoice_number?: string | null;
+  created_at?: string;
   customers?: {
     company_name: string;
     phone: string;
@@ -42,7 +44,6 @@ export default function StaffDeliveriesPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'delivered'>('pending');
   const [search, setSearch] = useState('');
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -74,12 +75,15 @@ export default function StaffDeliveriesPage() {
           total_amount,
           customer_id,
           delivery_method,
+          tally_invoice_number,
+          created_at,
           customers (company_name, phone),
           sales_order_lines (id, quantity, product_id, products (name, unit))
         `)
         .eq('is_deleted', false)
-        .in('status', ['Confirmed', 'Partially Delivered', 'Delivered'])
-        .order('order_date', { ascending: false });
+        .in('status', ['Confirmed', 'Partially Delivered', 'Delivered', 'Invoiced'])
+        .order('order_date', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -179,10 +183,23 @@ export default function StaffDeliveriesPage() {
     }
   };
 
+  const isToday = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const today = new Date();
+    return (
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear()
+    );
+  };
+
   const pendingOrders = orders.filter(
     o => o.status === 'Confirmed' || o.status === 'Partially Delivered'
   );
-  const completedOrders = orders.filter(o => o.status === 'Delivered');
+  const completedOrders = orders.filter(
+    o => o.status === 'Delivered' || o.status === 'Invoiced'
+  );
 
   const displayedOrders = (activeTab === 'pending' ? pendingOrders : completedOrders).filter(
     o =>
@@ -270,28 +287,50 @@ export default function StaffDeliveriesPage() {
         ) : (
           <div className="space-y-3">
             {displayedOrders.map(order => {
-              const isExpanded = expandedOrderId === order.id;
               const isActioning = actionLoadingId === order.id;
 
               return (
                 <Card key={order.id} className="bg-slate-800 border-slate-700/60 overflow-hidden shadow-lg">
                   <CardHeader className="p-4 pb-3 flex flex-row items-center justify-between space-y-0 border-b border-slate-700/50">
                     <div>
-                      <span className="text-xs font-mono font-bold text-primary block">
-                        {order.order_number}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-primary block">
+                          {order.order_number}
+                        </span>
+                        {isToday(order.order_date) && (
+                          <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px] px-1.5 py-0">
+                            Today
+                          </Badge>
+                        )}
+                      </div>
                       <CardTitle className="text-base font-bold text-white mt-0.5">
                         {order.customers?.company_name || 'Unknown Customer'}
                       </CardTitle>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {new Date(order.order_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
                     </div>
 
-                    {order.status === 'Confirmed' ? (
-                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Confirmed</Badge>
-                    ) : order.status === 'Partially Delivered' ? (
-                      <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Partial</Badge>
-                    ) : (
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Delivered</Badge>
-                    )}
+                    <div className="flex flex-col items-end gap-1">
+                      {order.status === 'Confirmed' ? (
+                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Confirmed</Badge>
+                      ) : order.status === 'Partially Delivered' ? (
+                        <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Partial</Badge>
+                      ) : order.status === 'Invoiced' ? (
+                        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 flex items-center gap-1">
+                          <Icons.document className="w-3 h-3" /> Invoiced
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 flex items-center gap-1">
+                          <Icons.delivered className="w-3 h-3" /> Delivered
+                        </Badge>
+                      )}
+                      {order.tally_invoice_number && (
+                        <span className="font-mono text-[10px] text-slate-400 bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-700/40">
+                          Inv: {order.tally_invoice_number}
+                        </span>
+                      )}
+                    </div>
                   </CardHeader>
 
                   <CardContent className="p-4 space-y-3">
@@ -317,44 +356,32 @@ export default function StaffDeliveriesPage() {
                       )}
                     </div>
 
-                    {/* Order Details & Summary */}
-                    <div className="flex justify-between items-center text-xs text-slate-400 pt-1">
-                      <span>Total Amount:</span>
-                      <span className="text-white font-bold text-sm">
-                        ₹{Number(order.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
+                    {/* Items to Deliver (Always Visible) */}
+                    <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-700/50 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                        <span>Items to Deliver</span>
+                        <span className="text-slate-400 font-normal">({order.sales_order_lines?.length || 0} items)</span>
+                      </div>
+                      <div className="divide-y divide-slate-800">
+                        {order.sales_order_lines && order.sales_order_lines.length > 0 ? (
+                          order.sales_order_lines.map(line => (
+                            <div key={line.id} className="py-2 first:pt-1 last:pb-0 flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-slate-100 truncate">
+                                {line.products?.name || 'Product'}
+                              </span>
+                              <span className="font-mono text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded shrink-0">
+                                {line.quantity} {line.products?.unit || 'Units'}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="py-1 text-xs text-slate-500 italic">No items found</div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Line Items Toggle */}
-                    <button
-                      onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
-                      className="w-full text-xs text-slate-400 hover:text-slate-200 flex items-center justify-between pt-1 font-medium"
-                    >
-                      <span>
-                        Items ({order.sales_order_lines?.length || 0})
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <span>{isExpanded ? 'Hide' : 'Show Details'}</span>
-                        {isExpanded ? <Icons.back className="w-3 h-3 rotate-90" /> : <Icons.forward className="w-3 h-3 rotate-90" />}
-                      </div>
-                    </button>
-
-                    {/* Expandable Line Items */}
-                    {isExpanded && (
-                      <div className="bg-slate-900/80 p-3 rounded-lg space-y-2 text-xs border border-slate-700/40 animate-in fade-in">
-                        {order.sales_order_lines?.map(line => (
-                          <div key={line.id} className="flex justify-between items-center border-b border-slate-800 pb-1.5 last:border-0 last:pb-0">
-                            <span className="text-slate-200 font-medium">{line.products?.name || 'Product'}</span>
-                            <span className="font-mono text-primary font-bold">
-                              {line.quantity} {line.products?.unit || 'Units'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     {/* Delivery Action Buttons */}
-                    {order.status !== 'Delivered' && (
+                    {(order.status === 'Confirmed' || order.status === 'Partially Delivered') && (
                       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-700/40">
                         <Button
                           variant="outline"

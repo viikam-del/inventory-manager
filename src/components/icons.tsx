@@ -75,6 +75,7 @@ export const Icons = {
   save: PackageCheck,
   eye: Search,
   purchaseOrders: Receipt,
+  invoice: FileText,
 
   // Status icons
   check: Check,

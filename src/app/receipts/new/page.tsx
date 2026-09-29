@@ -44,6 +44,8 @@ function NewReceiptForm() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState('');
+  const [isAlreadyReceived, setIsAlreadyReceived] = useState(false);
+  const [poStatusMessage, setPoStatusMessage] = useState('');
 
   const [formData, setFormData] = useState({
     receipt_number: 'Generating...',
@@ -65,7 +67,7 @@ function NewReceiptForm() {
         const [suppliersRes, productsRes, lastReceiptRes] = await Promise.all([
           supabase.from('suppliers').select('id, company_name').eq('is_deleted', false).order('company_name'),
           supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_non_gst, current_stock').eq('is_deleted', false).order('name'),
-          supabase.from('receipts').select('receipt_number').order('created_at', { ascending: false }).limit(1)
+          supabase.from('receipts').select('receipt_number').not('receipt_number', 'is', null).order('receipt_number', { ascending: false }).limit(1)
         ]);
 
         if (suppliersRes.error) throw suppliersRes.error;
@@ -80,19 +82,19 @@ function NewReceiptForm() {
           const match = lastGRN.match(/GRN-(\d+)/);
           if (match && match[1]) {
             const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, receipt_number: `GRN-${nextNum}` }));
+            setFormData(prev => ({ ...prev, receipt_number: `GRN-${String(nextNum).padStart(4, '0')}` }));
           } else {
-            setFormData(prev => ({ ...prev, receipt_number: `GRN-${Date.now().toString().slice(-6)}` }));
+            setFormData(prev => ({ ...prev, receipt_number: `GRN-${Date.now().toString().slice(-4)}` }));
           }
         } else {
-          setFormData(prev => ({ ...prev, receipt_number: `GRN-100001` }));
+          setFormData(prev => ({ ...prev, receipt_number: `GRN-0001` }));
         }
 
         // If PO ID is provided in query, prefill lines and supplier from the PO
         if (poIdParam) {
           const { data: poData, error: poError } = await supabase
             .from('purchase_orders')
-            .select('supplier_id, delivery_charges, purchase_order_lines(*)')
+            .select('supplier_id, delivery_charges')
             .eq('id', poIdParam)
             .single();
 
@@ -103,8 +105,20 @@ function NewReceiptForm() {
               delivery_charges: Number(poData.delivery_charges) || 0
             }));
 
-            if (poData.purchase_order_lines && poData.purchase_order_lines.length > 0) {
-              const prefilledLines: ReceiptLineItem[] = poData.purchase_order_lines.map((l: any) => {
+            // Check PO status to prevent duplicate receiving
+            if (poData.status === 'Received') {
+              setIsAlreadyReceived(true);
+              setPoStatusMessage(`Purchase Order ${poData.po_number || ''} has already been marked as 'Received'. Inbound stock has already been credited to inventory.`);
+            }
+
+            // Fetch PO lines explicitly to avoid join resolution issues
+            const { data: poLines } = await supabase
+              .from('purchase_order_lines')
+              .select('*')
+              .eq('purchase_order_id', poIdParam);
+
+            if (poLines && poLines.length > 0) {
+              const prefilledLines: ReceiptLineItem[] = poLines.map((l: any) => {
                 const prod = (productsRes.data || []).find(p => p.id === l.product_id);
                 const isBilled = l.is_billed !== undefined ? Boolean(l.is_billed) : true;
                 const gstRate = isBilled ? (Number(prod?.gst_rate) || 18) : 0;
@@ -568,6 +582,20 @@ function NewReceiptForm() {
           </CardContent>
         </Card>
 
+        {/* PO Already Received Warning */}
+        {isAlreadyReceived && (
+          <Card className="border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 p-4">
+            <div className="flex items-start gap-3">
+              <Icons.warning className="w-5 h-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="space-y-1">
+                <p className="font-semibold text-sm">Purchase Order Already Received</p>
+                <p className="text-xs">{poStatusMessage}</p>
+                <p className="text-xs text-muted-foreground mt-1">Generating another receipt against this PO is blocked to prevent accidental duplicate stock additions.</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Action Buttons */}
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button variant="outline" asChild>
@@ -575,8 +603,13 @@ function NewReceiptForm() {
               Cancel
             </Link>
           </Button>
-          <Button type="submit" variant="success" disabled={loading}>
-            {loading ? (
+          <Button type="submit" variant="success" disabled={loading || isAlreadyReceived}>
+            {isAlreadyReceived ? (
+              <>
+                <Icons.check className="w-3.5 h-3.5 mr-1.5" />
+                Stock Already Received (Disabled)
+              </>
+            ) : loading ? (
               <>
                 <Icons.refresh className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 Updating Inventory...

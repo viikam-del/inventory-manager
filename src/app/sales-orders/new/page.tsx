@@ -93,12 +93,12 @@ export default function NewSalesOrderPage() {
           const match = lastSO.match(/SO-(\d+)/);
           if (match && match[1]) {
             const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, order_number: `SO-${nextNum}` }));
+            setFormData(prev => ({ ...prev, order_number: `SO-${String(nextNum).padStart(4, '0')}` }));
           } else {
-            setFormData(prev => ({ ...prev, order_number: `SO-${Date.now().toString().slice(-6)}` }));
+            setFormData(prev => ({ ...prev, order_number: `SO-${Date.now().toString().slice(-4)}` }));
           }
         } else {
-          setFormData(prev => ({ ...prev, order_number: `SO-100001` }));
+          setFormData(prev => ({ ...prev, order_number: `SO-0001` }));
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load initial form data');

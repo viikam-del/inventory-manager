@@ -35,6 +35,7 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [ledger, setLedger] = useState<any[]>([]);
+  const [outstandingBalance, setOutstandingBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [ledgerLoading, setLedgerLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -76,10 +77,10 @@ export default function CustomerDetailPage() {
         id: s.id,
         date: s.order_date,
         type: 'Sale',
-        reference: s.so_number,
+        reference: s.order_number || s.so_number || 'SO',
         link: `/sales-orders/${s.id}`,
         status: s.status,
-        amount: (Number(s.total_amount) + Number(s.gst_amount)),
+        amount: (Number(s.total_amount) + Number(s.gst_amount || 0)),
         isDebit: true // Owe us more
       }));
 
@@ -89,7 +90,7 @@ export default function CustomerDetailPage() {
         type: 'Payment',
         reference: p.payment_number || p.reference_number || 'PAY',
         link: `/payments/${p.id}`,
-        status: p.method,
+        status: p.payment_method || p.method || 'Payment',
         amount: Number(p.amount),
         isDebit: false // Paid us
       }));
@@ -104,6 +105,7 @@ export default function CustomerDetailPage() {
       });
 
       setLedger(withBalance);
+      setOutstandingBalance(running);
     } catch (err) {
       console.error('Failed to load ledger', err);
     } finally {
@@ -306,6 +308,16 @@ export default function CustomerDetailPage() {
               <span className="text-muted-foreground">Opening Balance</span>
               <span className="font-mono font-semibold text-foreground">₹{customer.opening_balance.toLocaleString('en-IN')}</span>
             </div>
+            {outstandingBalance !== null && (
+              <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                <span className="text-muted-foreground font-semibold">Current Outstanding</span>
+                <span className={`font-mono font-bold ${outstandingBalance > 0 ? 'text-destructive' : 'text-success'}`}>
+                  {outstandingBalance < 0
+                    ? `₹${Math.abs(outstandingBalance).toLocaleString('en-IN')} (Cr)`
+                    : `₹${outstandingBalance.toLocaleString('en-IN')}`}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Due Term</span>
               <span className="font-medium text-foreground">{customer.default_due_days} Days</span>
