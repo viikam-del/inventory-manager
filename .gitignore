@@ -41,3 +41,6 @@ next-env.d.ts
 .claude/
 stitch-screen-1.html
 
+
+.vercel
+.env*
