@@ -94,7 +94,7 @@ function NewReceiptForm() {
         if (poIdParam) {
           const { data: poData, error: poError } = await supabase
             .from('purchase_orders')
-            .select('supplier_id, delivery_charges')
+            .select('supplier_id, delivery_charges, status, po_number')
             .eq('id', poIdParam)
             .single();
 

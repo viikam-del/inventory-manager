@@ -50,30 +50,6 @@ export default function ProductDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string>();
 
-  useEffect(() => {
-    fetchProduct();
-  }, [params.id]);
-
-  async function fetchProduct() {
-    setLoading(true);
-    try {
-      const { data, error: supabaseError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', params.id)
-        .eq('is_deleted', false)
-        .single();
-
-      if (supabaseError) throw supabaseError;
-      setProduct(data);
-      if (data) fetchProductLedger(data.id);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load product details');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function fetchProductLedger(productId: string) {
     setLedgerLoading(true);
     try {
@@ -188,6 +164,30 @@ export default function ProductDetailPage() {
       setLedgerLoading(false);
     }
   }
+
+  async function fetchProduct() {
+    setLoading(true);
+    try {
+      const { data, error: supabaseError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', params.id)
+        .eq('is_deleted', false)
+        .single();
+
+      if (supabaseError) throw supabaseError;
+      setProduct(data);
+      if (data) fetchProductLedger(data.id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load product details');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchProduct();
+  }, [params.id]);
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this product?')) return;

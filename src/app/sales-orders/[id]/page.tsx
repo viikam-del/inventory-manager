@@ -65,10 +65,6 @@ export default function SalesOrderDetailPage() {
   const [tallyInvoiceInput, setTallyInvoiceInput] = useState('');
   const [showTallyModal, setShowTallyModal] = useState(false);
 
-  useEffect(() => {
-    fetchOrderDetails();
-  }, [params.id]);
-
   async function fetchOrderDetails() {
     setLoading(true);
     try {
@@ -96,6 +92,10 @@ export default function SalesOrderDetailPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchOrderDetails();
+  }, [params.id]);
 
   const getTaxModeBadge = (isGst: boolean) => {
     return isGst ? (

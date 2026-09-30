@@ -34,10 +34,6 @@ export default function PaymentDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchPaymentDetails();
-  }, [params.id]);
-
   async function fetchPaymentDetails() {
     setLoading(true);
     try {
@@ -56,6 +52,10 @@ export default function PaymentDetailPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchPaymentDetails();
+  }, [params.id]);
 
   async function handleDelete() {
     if (!confirm('Are you sure you want to delete this payment record? This will move it to the archive.')) return;

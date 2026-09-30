@@ -46,22 +46,6 @@ export default function StaffDeliveriesPage() {
   const [search, setSearch] = useState('');
   const router = useRouter();
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('rds_staff_user');
-    if (!storedUser) {
-      router.push('/staff/login');
-      return;
-    }
-    try {
-      setUser(JSON.parse(storedUser));
-    } catch {
-      router.push('/staff/login');
-      return;
-    }
-
-    fetchDeliveries();
-  }, [router]);
-
   async function fetchDeliveries() {
     setLoading(true);
     try {
@@ -101,6 +85,22 @@ export default function StaffDeliveriesPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('rds_staff_user');
+    if (!storedUser) {
+      router.push('/staff/login');
+      return;
+    }
+    try {
+      setUser(JSON.parse(storedUser));
+    } catch {
+      router.push('/staff/login');
+      return;
+    }
+
+    fetchDeliveries();
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('rds_staff_user');

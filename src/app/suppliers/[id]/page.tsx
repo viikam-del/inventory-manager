@@ -38,30 +38,6 @@ export default function SupplierDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchSupplier();
-  }, [params.id]);
-
-  async function fetchSupplier() {
-    setLoading(true);
-    try {
-      const { data, error: supabaseError } = await supabase
-        .from('suppliers')
-        .select('*')
-        .eq('id', params.id)
-        .eq('is_deleted', false)
-        .single();
-
-      if (supabaseError) throw supabaseError;
-      setSupplier(data);
-      if (data) fetchSupplierLedger(data.id);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load supplier details');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function fetchSupplierLedger(supplierId: string) {
     setLedgerLoading(true);
     try {
@@ -129,6 +105,30 @@ export default function SupplierDetailPage() {
       setLedgerLoading(false);
     }
   }
+
+  async function fetchSupplier() {
+    setLoading(true);
+    try {
+      const { data, error: supabaseError } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('id', params.id)
+        .eq('is_deleted', false)
+        .single();
+
+      if (supabaseError) throw supabaseError;
+      setSupplier(data);
+      if (data) fetchSupplierLedger(data.id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load supplier details');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchSupplier();
+  }, [params.id]);
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this supplier record?')) return;

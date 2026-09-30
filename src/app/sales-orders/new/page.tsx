@@ -231,17 +231,82 @@ export default function NewSalesOrderPage() {
       return;
     }
 
+    // 1. Stock Availability Check
+    const stockIssues: string[] = [];
+    for (const line of validLines) {
+      const prod = products.find(p => p.id === line.product_id);
+      if (prod && line.quantity > prod.current_stock) {
+        stockIssues.push(`- ${prod.name}: Requested ${line.quantity}, Available ${prod.current_stock}`);
+      }
+    }
+
+    if (stockIssues.length > 0) {
+      const msg = `Warning: Insufficient stock for the following items:\n${stockIssues.join('\n')}\n\nDo you want to proceed anyway?`;
+      if (!window.confirm(msg)) {
+        return;
+      }
+    }
+
+    const subtotal = calculateSubtotal();
+    const gstAmount = calculateTotalGST();
+    const grandTotal = calculateGrandTotal();
+
+    // 2. Credit Limit Validation
+    if (selectedCustomer && selectedCustomer.credit_limit && selectedCustomer.credit_limit > 0) {
+      try {
+        const { data: salesData } = await supabase.from('sales_orders').select('total_amount, gst_amount').eq('customer_id', selectedCustomer.id).eq('is_deleted', false);
+        const { data: payData } = await supabase.from('payments').select('amount').eq('customer_id', selectedCustomer.id).eq('is_deleted', false);
+
+        const totalSales = (salesData || []).reduce((acc, row) => acc + (Number(row.total_amount) || 0) + (Number(row.gst_amount) || 0), 0);
+        const totalPays = (payData || []).reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
+
+        const currentDue = Number(selectedCustomer.opening_balance || 0) + totalSales - totalPays;
+        // As grandTotal is our new amount we are adding to the order, wait, let's align our calculation with payments page
+        // Payments page adds gst_amount to total_amount for the sales_orders.
+        // So this new order will add grandTotal + gstAmount to the customer's due if we follow that metric.
+        // But let's just add grandTotal for sanity check since it holds the total order value.
+        const newOrderAddedValue = grandTotal + gstAmount; // To match the payment page behavior where gst_amount is added
+        const totalProjectedDue = currentDue + newOrderAddedValue;
+
+        if (totalProjectedDue > selectedCustomer.credit_limit) {
+          const msg = `Credit Limit Exceeded!\nCustomer: ${selectedCustomer.company_name}\nCredit Limit: ₹${selectedCustomer.credit_limit.toLocaleString('en-IN')}\n\nCurrent Due: ₹${currentDue.toLocaleString('en-IN')}\nNew Order Value (w/ calculation adj): ₹${newOrderAddedValue.toLocaleString('en-IN')}\nProjected Due: ₹${totalProjectedDue.toLocaleString('en-IN')}\n\nAre you sure you want to approve this order?`;
+          if (!window.confirm(msg)) {
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Credit limit check failed", err);
+      }
+    }
+
     setLoading(true);
 
     try {
-      const subtotal = calculateSubtotal();
-      const gstAmount = calculateTotalGST();
-      const grandTotal = calculateGrandTotal();
+      // 3. Collision Handling for Order Numbering
+      let finalOrderNumber = formData.order_number;
+      const { data: existingOrder } = await supabase
+        .from('sales_orders')
+        .select('id')
+        .eq('order_number', finalOrderNumber);
+
+      if (existingOrder && existingOrder.length > 0) {
+        // Regenerate order number safely
+        const { data: lastSORes } = await supabase.from('sales_orders').select('order_number').not('order_number', 'is', null).order('order_number', { ascending: false }).limit(1);
+        if (lastSORes && lastSORes.length > 0 && lastSORes[0].order_number) {
+          const match = lastSORes[0].order_number.match(/SO-(\d+)/);
+          if (match && match[1]) {
+            finalOrderNumber = `SO-${String(parseInt(match[1], 10) + 1).padStart(4, '0')}`;
+          } else {
+            finalOrderNumber = `SO-${Date.now().toString().slice(-4)}`;
+          }
+        }
+        alert(`Order number ${formData.order_number} was already taken. Automatically re-assigned to ${finalOrderNumber}`);
+      }
 
       const { data: orderData, error: orderError } = await supabase
         .from('sales_orders')
         .insert([{
-          order_number: formData.order_number,
+          order_number: finalOrderNumber,
           customer_id: formData.customer_id,
           order_date: formData.order_date,
           delivery_date: formData.delivery_date || null,
@@ -307,373 +372,401 @@ export default function NewSalesOrderPage() {
         backLabel="Back to Sales Orders"
       />
 
-      <div className="max-w-5xl">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && (
-            <Card className="border-destructive/30 bg-destructive/10">
-              <CardContent className="p-4 flex items-center gap-3 text-destructive text-sm font-medium">
-                <Icons.warning className="w-5 h-5 shrink-0" />
-                <span>{error}</span>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error && (
+          <Card className="border-destructive/30 bg-destructive/10">
+            <CardContent className="p-4 flex items-center gap-3 text-destructive text-sm font-medium">
+              <Icons.warning className="w-5 h-5 shrink-0" />
+              <span>{error}</span>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Main Form Rail (2 Columns on Desktop) */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Section 1: Order Header */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Icons.customers className="w-4 h-4 text-primary" /> Order Information & Client
+                </CardTitle>
+                <CardDescription className="text-xs">Select customer account and define scheduled dates</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Order Number <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.order_number}
+                      onChange={e => setFormData({ ...formData, order_number: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Customer Account <span className="text-destructive">*</span>
+                    </label>
+                    <select
+                      value={formData.customer_id}
+                      onChange={e => handleCustomerChange(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">Select Customer</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.company_name} ({c.is_gst_customer ? 'GST' : 'Non-GST'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Order Date <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.order_date}
+                      onChange={e => setFormData({ ...formData, order_date: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/40">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Expected Delivery Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.delivery_date}
+                      onChange={e => setFormData({ ...formData, delivery_date: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">
+                      Freight / Delivery Charges (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.delivery_charges}
+                      onChange={e => setFormData({ ...formData, delivery_charges: parseFloat(e.target.value) || 0 })}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* Section 1: Order Header */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Order Information & Client</CardTitle>
-              <CardDescription className="text-xs">Select customer account and define scheduled dates</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Order Number <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.order_number}
-                    onChange={e => setFormData({ ...formData, order_number: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Customer Account <span className="text-destructive">*</span>
-                  </label>
-                  <select
-                    value={formData.customer_id}
-                    onChange={e => handleCustomerChange(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="">Select Customer</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.company_name} ({c.is_gst_customer ? 'GST' : 'Non-GST'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Order Date <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.order_date}
-                    onChange={e => setFormData({ ...formData, order_date: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-border/40">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Expected Delivery Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.delivery_date}
-                    onChange={e => setFormData({ ...formData, delivery_date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Freight / Delivery Charges (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.delivery_charges}
-                    onChange={e => setFormData({ ...formData, delivery_charges: parseFloat(e.target.value) || 0 })}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                {selectedCustomer && (
-                  <div className="flex flex-col justify-center rounded-lg border border-primary/20 bg-primary/5 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold uppercase text-primary tracking-wider">
-                        Tax Mode
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleGstMode(!isGstOrder)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          isGstOrder ? 'bg-primary' : 'bg-muted-foreground/30'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform ${
-                            isGstOrder ? 'translate-x-5' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <Badge variant={isGstOrder ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                        {isGstOrder ? 'GST Invoice' : 'Cash Invoice'}
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        {isGstOrder ? `Rate: ${selectedCustomer.gstin ? 'Product GST' : 'Standard'}` : '0% GST'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {selectedCustomer.credit_limit
-                        ? `Credit Limit: ₹${Number(selectedCustomer.credit_limit).toLocaleString('en-IN')}`
-                        : 'No formal credit limit set'}
-                    </div>
+            {/* Section 2: Delivery Logistics */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Icons.delivery className="w-4 h-4 text-primary" /> Delivery Logistics & Site Details
+                </CardTitle>
+                <CardDescription className="text-xs">Consignee destination address and dispatch point of contact</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2 space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">Delivery / Site Address</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Plot 42, GIDC Industrial Estate, Odhav, Ahmedabad"
+                      value={formData.delivery_address}
+                      onChange={e => setFormData({ ...formData, delivery_address: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Section 2: Delivery Logistics */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Delivery Logistics & Site Details</CardTitle>
-              <CardDescription className="text-xs">Consignee destination address and dispatch point of contact</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Delivery / Site Address</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Plot 42, GIDC Industrial Estate, Odhav, Ahmedabad"
-                    value={formData.delivery_address}
-                    onChange={e => setFormData({ ...formData, delivery_address: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Receiver Phone</label>
-                  <input
-                    type="tel"
-                    placeholder="+91 98765 43210"
-                    value={formData.delivery_contact_phone}
-                    onChange={e => setFormData({ ...formData, delivery_contact_phone: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/40">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Delivery Method / Mode</label>
-                  <div className="flex flex-wrap items-center gap-4 pt-1">
-                    {['Porter', 'Customer Pickup', 'Self Delivery', 'Courier / Transport', 'Other'].map(method => (
-                      <label key={method} className="flex items-center gap-2 cursor-pointer text-xs font-medium">
-                        <input
-                          type="radio"
-                          name="delivery_method"
-                          value={method}
-                          checked={formData.delivery_method === method}
-                          onChange={e => setFormData({ ...formData, delivery_method: e.target.value })}
-                          className="w-4 h-4 text-primary focus:ring-primary"
-                        />
-                        <span>{method}</span>
-                      </label>
-                    ))}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">Receiver Phone</label>
+                    <input
+                      type="tel"
+                      placeholder="+91 98765 43210"
+                      value={formData.delivery_contact_phone}
+                      onChange={e => setFormData({ ...formData, delivery_contact_phone: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">Receiver Contact Person</label>
-                  <input
-                    type="text"
-                    placeholder="Name of person receiving / picking up order"
-                    value={formData.delivery_contact_person}
-                    onChange={e => setFormData({ ...formData, delivery_contact_person: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/40">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">Delivery Method / Mode</label>
+                    <div className="flex flex-wrap items-center gap-4 pt-1">
+                      {['Porter', 'Customer Pickup', 'Self Delivery', 'Courier / Transport', 'Other'].map(method => (
+                        <label key={method} className="flex items-center gap-2 cursor-pointer text-xs font-medium">
+                          <input
+                            type="radio"
+                            name="delivery_method"
+                            value={method}
+                            checked={formData.delivery_method === method}
+                            onChange={e => setFormData({ ...formData, delivery_method: e.target.value })}
+                            className="w-4 h-4 text-primary focus:ring-primary"
+                          />
+                          <span>{method}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">Receiver Contact Person</label>
+                    <input
+                      type="text"
+                      placeholder="Name of person receiving / picking up order"
+                      value={formData.delivery_contact_person}
+                      onChange={e => setFormData({ ...formData, delivery_contact_person: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Section 3: Ordered Line Items */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle className="text-base">Order Line Items</CardTitle>
-                <CardDescription className="text-xs">Add products, quantities, tax schedules, and negotiated unit rates</CardDescription>
-              </div>
-              <Button type="button" size="sm" variant="outline" onClick={addLine} className="h-8 text-xs">
-                <Icons.add className="w-3.5 h-3.5 mr-1" /> Add Product
-              </Button>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead className="bg-muted/50 border-b border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
-                    <tr>
-                      <th className="px-3 py-2.5 min-w-[220px]">Product</th>
-                      <th className="px-3 py-2.5 w-24">Qty</th>
-                      <th className="px-3 py-2.5 w-32">Unit Price (₹)</th>
-                      <th className="px-3 py-2.5 w-24">GST %</th>
-                      <th className="px-3 py-2.5 w-28">GST (₹)</th>
-                      <th className="px-3 py-2.5 w-32 text-right">Line Total</th>
-                      <th className="px-3 py-2.5 w-10 text-center"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40">
-                    {lines.map((line, idx) => {
-                      const lineTotal = (line.quantity * line.unit_price) + (line.gst_amount || 0);
-                      return (
-                        <tr key={idx} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-3 py-2.5">
-                            <select
-                              value={line.product_id}
-                              onChange={e => handleProductChange(idx, e.target.value)}
-                              required
-                              className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                            >
-                              <option value="">Select Product SKU</option>
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} (Stock: {p.current_stock} {p.unit})
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <input
-                              type="number"
-                              min="0.01"
-                              step="0.01"
-                              value={line.quantity}
-                              onChange={e => handleLineChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                              required
-                              className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                            />
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.unit_price}
-                              onChange={e => handleLineChange(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-                              required
-                              className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                            />
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={line.gst_rate}
-                              onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                            />
-                          </td>
-                          <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">
-                            ₹{line.gst_amount.toFixed(2)}
-                          </td>
-                          <td className="px-3 py-2.5 text-xs text-right font-bold font-mono text-foreground">
-                            ₹{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeLine(idx)}
-                              disabled={lines.length === 1}
-                              className="text-muted-foreground hover:text-destructive disabled:opacity-20 transition-colors p-1"
-                            >
-                              <Icons.close className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            {/* Section 3: Ordered Line Items */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div>
+                  <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Icons.sales className="w-4 h-4 text-primary" /> Order Line Items
+                  </CardTitle>
+                  <CardDescription className="text-xs">Add products, quantities, tax schedules, and negotiated unit rates</CardDescription>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={addLine} className="h-8 text-xs shrink-0 self-start sm:self-auto">
+                  <Icons.add className="w-3.5 h-3.5 mr-1" /> Add Product
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0 sm:p-6 sm:pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead className="bg-muted/50 border-y sm:border-y-0 sm:border-b border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
+                      <tr>
+                        <th className="px-3 sm:px-4 py-3 min-w-[220px]">Product / SKU</th>
+                        <th className="px-3 sm:px-4 py-3 w-24">Qty</th>
+                        <th className="px-3 sm:px-4 py-3 w-32">Unit Price (₹)</th>
+                        <th className="px-3 sm:px-4 py-3 w-24">GST %</th>
+                        <th className="px-3 sm:px-4 py-3 w-28">GST (₹)</th>
+                        <th className="px-3 sm:px-4 py-3 w-32 text-right">Line Total</th>
+                        <th className="px-3 sm:px-4 py-3 w-10 text-center"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {lines.map((line, idx) => {
+                        const lineTotal = (line.quantity * line.unit_price) + (line.gst_amount || 0);
+                        return (
+                          <tr key={idx} className="hover:bg-muted/20 transition-colors">
+                            <td className="px-3 sm:px-4 py-2.5">
+                              <select
+                                value={line.product_id}
+                                onChange={e => handleProductChange(idx, e.target.value)}
+                                required
+                                className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                              >
+                                <option value="">Select Product SKU</option>
+                                {products.map(p => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name} (Stock: {p.current_stock} {p.unit})
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 sm:px-4 py-2.5">
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={line.quantity}
+                                onChange={e => handleLineChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                                required
+                                className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                              />
+                            </td>
+                            <td className="px-3 sm:px-4 py-2.5">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={line.unit_price}
+                                onChange={e => handleLineChange(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                                required
+                                className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                              />
+                            </td>
+                            <td className="px-3 sm:px-4 py-2.5">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={line.gst_rate}
+                                onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
+                                className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                              />
+                            </td>
+                            <td className="px-3 sm:px-4 py-2.5 text-xs text-muted-foreground font-mono">
+                              ₹{line.gst_amount.toFixed(2)}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2.5 text-xs text-right font-bold font-mono text-foreground">
+                              ₹{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-3 sm:px-4 py-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeLine(idx)}
+                                disabled={lines.length === 1}
+                                className="text-muted-foreground hover:text-destructive disabled:opacity-20 transition-colors p-1"
+                              >
+                                <Icons.close className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-              {/* Order Financial Calculation Summary */}
-              <div className="border-t border-border/50 pt-4 mt-4 flex flex-col items-end space-y-1.5">
-                <div className="flex items-center justify-between w-64 text-xs text-muted-foreground">
-                  <span>Subtotal:</span>
+          {/* Sticky Financial Sidebar (1 Column on Desktop) */}
+          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-6">
+            {/* Order Financial Calculation Summary */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Icons.receipts className="w-4 h-4 text-primary" /> Order Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-0 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Taxable Subtotal</span>
                   <span className="font-mono font-medium text-foreground">
                     ₹{calculateSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="flex items-center justify-between w-64 text-xs text-muted-foreground">
-                  <span>GST Taxes:</span>
-                  <span className="font-mono font-medium text-foreground">
-                    ₹{calculateTotalGST().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                {formData.delivery_charges > 0 && (
-                  <div className="flex items-center justify-between w-64 text-xs text-muted-foreground">
-                    <span>Freight / Delivery:</span>
+                {isGstOrder && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>GST Tax Amount</span>
+                    <span className="font-mono font-medium text-foreground">
+                      ₹{calculateTotalGST().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+                {Number(formData.delivery_charges) > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Freight / Delivery</span>
                     <span className="font-mono font-medium text-foreground">
                       ₹{Number(formData.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 )}
-                <div className="flex items-center justify-between w-64 text-sm font-bold border-t border-border/60 pt-2 text-foreground">
-                  <span>Grand Total:</span>
-                  <span className="font-mono text-primary text-base">
+                <div className="pt-3 border-t border-border/60 flex justify-between items-baseline">
+                  <span className="font-semibold text-foreground">Grand Total</span>
+                  <span className="font-mono font-bold text-lg text-primary">
                     ₹{calculateGrandTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          {/* Section 4: Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Order Notes & Terms</CardTitle>
-              <CardDescription className="text-xs">Internal dispatch reminders or commercial conditions</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <textarea
-                rows={3}
-                value={formData.notes}
-                onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Payment terms, delivery gate instructions, special packing remarks..."
-                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </CardContent>
-          </Card>
+            {/* Customer Tax Mode & Credit Info */}
+            {selectedCustomer && (
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase text-primary tracking-wider flex items-center gap-1.5">
+                      <Icons.receipts className="w-3.5 h-3.5" /> Tax Mode
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleGstMode(!isGstOrder)}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        isGstOrder ? 'bg-primary' : 'bg-muted-foreground/30'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform ${
+                          isGstOrder ? 'translate-x-5' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Badge variant={isGstOrder ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 h-4">
+                      {isGstOrder ? 'GST Invoice' : 'Cash Invoice'}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground">
+                      {isGstOrder ? 'Product GST Rates' : '0% GST'}
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-medium text-foreground pt-2 border-t border-primary/10 flex items-center justify-between">
+                    <span className="text-muted-foreground">Credit Limit</span>
+                    <span className="font-mono">
+                      {selectedCustomer.credit_limit
+                        ? `₹${Number(selectedCustomer.credit_limit).toLocaleString('en-IN')}`
+                        : 'No Limit'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Form Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <Button variant="outline" type="button" asChild>
-              <Link href="/sales-orders">Cancel</Link>
-            </Button>
-            <Button type="submit" disabled={loading} className="min-w-[140px]">
-              {loading ? (
-                <>
-                  <Icons.refresh className="w-4 h-4 mr-2 animate-spin" />
-                  Creating Order...
-                </>
-              ) : (
-                <>
-                  <Icons.success className="w-4 h-4 mr-1.5" />
-                  Create Sales Order
-                </>
-              )}
-            </Button>
+            {/* Order Notes & Terms */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Icons.document className="w-4 h-4 text-primary" /> Notes & Instructions
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <textarea
+                  rows={3}
+                  placeholder="Add dispatch instructions, packing notes, or terms..."
+                  value={formData.notes}
+                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Form Submission Actions */}
+            <div className="flex flex-col gap-2.5">
+              <Button type="submit" disabled={loading} className="w-full h-10 font-semibold shadow-xs">
+                {loading ? (
+                  <>
+                    <Icons.refresh className="w-4 h-4 mr-2 animate-spin" />
+                    Creating Order...
+                  </>
+                ) : (
+                  <>
+                    <Icons.success className="w-4 h-4 mr-1.5" />
+                    Create Sales Order
+                  </>
+                )}
+              </Button>
+              <Button type="button" variant="outline" asChild className="w-full h-9">
+                <Link href="/sales-orders">Cancel</Link>
+              </Button>
+            </div>
           </div>
-        </form>
-      </div>
+        </div>
+      </form>
     </PageContainer>
   );
 }

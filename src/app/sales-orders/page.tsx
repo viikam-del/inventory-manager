@@ -7,6 +7,7 @@ import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface SalesOrder {
@@ -133,20 +134,13 @@ export default function SalesOrdersPage() {
 
   const getStatusBadge = (status: SalesOrder['status']) => {
     switch (status) {
-      case 'Invoiced':
-        return <Badge variant="info" className="gap-1"><Icons.document className="w-3 h-3" /> Invoiced</Badge>;
-      case 'Delivered':
-        return <Badge variant="success" className="gap-1"><Icons.delivered className="w-3 h-3" /> Delivered</Badge>;
-      case 'Partially Delivered':
-        return <Badge variant="warning" className="gap-1"><Icons.delivery className="w-3 h-3" /> Partial</Badge>;
-      case 'Confirmed':
-        return <Badge variant="default" className="gap-1"><Icons.success className="w-3 h-3" /> Confirmed</Badge>;
-      case 'Draft':
-        return <Badge variant="secondary" className="gap-1"><Icons.document className="w-3 h-3" /> Draft</Badge>;
-      case 'Cancelled':
-        return <Badge variant="destructive" className="gap-1"><Icons.close className="w-3 h-3" /> Cancelled</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+      case 'Invoiced': return <Badge variant="info">Invoiced</Badge>;
+      case 'Delivered': return <Badge variant="success">Delivered</Badge>;
+      case 'Partially Delivered': return <Badge variant="warning">Partially Delivered</Badge>;
+      case 'Confirmed': return <Badge variant="default">Confirmed</Badge>;
+      case 'Draft': return <Badge variant="secondary">Draft</Badge>;
+      case 'Cancelled': return <Badge variant="destructive">Cancelled</Badge>;
+      default: return <Badge variant="outline">{status}</Badge>;
     }
   };
 
@@ -185,7 +179,7 @@ export default function SalesOrdersPage() {
                   {pendingTallyInvoices.length} Delivered Orders Awaiting Tally Invoicing
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Goods have been marked delivered but haven't been synchronized with your Tally voucher number.
+                  Goods have been marked delivered but haven&apos;t been synchronized with your Tally voucher number.
                 </p>
               </div>
             </div>

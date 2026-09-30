@@ -17,11 +17,7 @@ export default function ProductsPage() {
   const deferredSearch = useDeferredValue(search);
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'ok'>('all');
 
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const fetchProducts = async () => {
+  async function fetchProducts() {
     setLoading(true);
     try {
       const { data, error: supabaseError } = await supabase
@@ -42,7 +38,11 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
   const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;

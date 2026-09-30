@@ -70,10 +70,6 @@ export default function ReceiptDetailPage() {
     }
   };
 
-  useEffect(() => {
-    fetchReceiptDetails();
-  }, [params.id]);
-
   async function fetchReceiptDetails() {
     setLoading(true);
     try {
@@ -100,6 +96,10 @@ export default function ReceiptDetailPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchReceiptDetails();
+  }, [params.id]);
 
   if (loading) {
     return (
