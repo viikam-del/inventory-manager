@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Icons } from '@/components/icons';
@@ -9,7 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
-export default function NewProductPage() {
+export default function EditProductPage() {
+  const params = useParams();
+  const router = useRouter();
+
   const [formData, setFormData] = useState({
     name: '',
     sku_code: '',
@@ -25,12 +28,13 @@ export default function NewProductPage() {
     sub_category_id: '',
     notes: '',
   });
-  const [loading, setLoading] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [segments, setSegments] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [subCategories, setSubCategories] = useState<any[]>([]);
-  const router = useRouter();
 
   useEffect(() => {
     const fetchSegments = async () => {
@@ -44,6 +48,46 @@ export default function NewProductPage() {
     fetchSegments();
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    async function fetchProduct() {
+      if (!params.id) return;
+      setLoading(true);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', params.id)
+          .eq('is_deleted', false)
+          .single();
+
+        if (fetchError) throw fetchError;
+        if (data) {
+          setFormData({
+            name: data.name || '',
+            sku_code: data.sku_code || '',
+            unit: (data.unit as 'L' | 'PCS' | 'KG') || 'L',
+            hsn_code: data.hsn_code || '',
+            gst_rate: data.gst_rate ?? 18,
+            price_gst: data.price_gst?.toString() || '',
+            price_non_gst: data.price_non_gst?.toString() || '',
+            min_stock_level: data.min_stock_level?.toString() || '',
+            current_stock: data.current_stock?.toString() || '0',
+            segment_id: data.segment_id || '',
+            category_id: data.category_id || '',
+            sub_category_id: data.sub_category_id || '',
+            notes: data.notes || '',
+          });
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to load product details');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchProduct();
+  }, [params.id]);
 
   useEffect(() => {
     if (formData.category_id) {
@@ -73,28 +117,18 @@ export default function NewProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
 
     try {
-      let sku = formData.sku_code;
-      if (!sku) {
-        const namePart = formData.name
-          .toUpperCase()
-          .replace(/[^A-Z0-9]/g, '')
-          .slice(0, 3);
-        const unitPart = formData.unit.toUpperCase();
-        const randomPart = Math.floor(Math.random() * 1000)
-          .toString()
-          .padStart(3, '0');
-        sku = `${namePart}-${unitPart}-${randomPart}`;
-      }
+      const sku = formData.sku_code.trim();
 
-      // Check for duplicate non-deleted products
+      // Check for duplicate active products excluding current product
       const { data: existingProducts, error: checkError } = await supabase
         .from('products')
         .select('id, name, sku_code')
         .or(`name.eq.${formData.name},sku_code.eq.${sku}`)
+        .neq('id', params.id)
         .eq('is_deleted', false)
         .limit(2);
 
@@ -104,50 +138,66 @@ export default function NewProductPage() {
         const hasDuplicateName = existingProducts.some(p => p.name.toLowerCase() === formData.name.toLowerCase());
         const hasDuplicateSku = existingProducts.some(p => p.sku_code === sku);
 
-        let errorMessage = 'A product with this ';
+        let errorMessage = 'Another active product already has this ';
         if (hasDuplicateName && hasDuplicateSku) {
-          errorMessage += 'name and SKU code already exists.';
+          errorMessage += 'name and SKU code.';
         } else if (hasDuplicateName) {
-          errorMessage += 'name already exists.';
+          errorMessage += 'name.';
         } else {
-          errorMessage += 'SKU code already exists.';
+          errorMessage += 'SKU code.';
         }
 
         throw new Error(errorMessage);
       }
 
-      const { error: insertError } = await supabase.from('products').insert({
-        name: formData.name,
-        sku_code: sku,
-        unit: formData.unit,
-        hsn_code: formData.hsn_code,
-        gst_rate: formData.gst_rate,
-        price_gst: parseFloat(formData.price_gst) || 0,
-        price_non_gst: parseFloat(formData.price_non_gst) || 0,
-        min_stock_level: parseFloat(formData.min_stock_level) || 0,
-        current_stock: parseFloat(formData.current_stock) || 0,
-        segment_id: formData.segment_id || null,
-        category_id: formData.category_id || null,
-        sub_category_id: formData.sub_category_id || null,
-        notes: formData.notes,
-      });
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({
+          name: formData.name,
+          sku_code: sku,
+          unit: formData.unit,
+          hsn_code: formData.hsn_code,
+          gst_rate: formData.gst_rate,
+          price_gst: parseFloat(formData.price_gst) || 0,
+          price_non_gst: parseFloat(formData.price_non_gst) || 0,
+          min_stock_level: parseFloat(formData.min_stock_level) || 0,
+          segment_id: formData.segment_id || null,
+          category_id: formData.category_id || null,
+          sub_category_id: formData.sub_category_id || null,
+          notes: formData.notes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', params.id);
 
-      if (insertError) throw insertError;
-      router.push('/products');
+      if (updateError) throw updateError;
+      router.push(`/products/${params.id}`);
     } catch (err: any) {
-      setError(err.message || 'An error occurred while creating product');
+      setError(err.message || 'An error occurred while updating product');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
+
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="min-h-[50vh] flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Icons.refresh className="animate-spin h-8 w-8 text-primary mx-auto" />
+            <p className="text-xs sm:text-sm text-muted-foreground font-medium">Loading product details...</p>
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
       <PageHeader
-        title="Add New Product"
-        description="Register a new SKU with tax rates, dual pricing tiers, and reorder safety thresholds"
-        backHref="/products"
-        backLabel="Back to Catalog"
+        title={`Edit Product: ${formData.name || 'Product'}`}
+        description="Modify product specifications, tax rates, dual pricing, and reorder thresholds"
+        backHref={`/products/${params.id}`}
+        backLabel="Back to Product Details"
       />
 
       <div className="max-w-4xl">
@@ -203,13 +253,14 @@ export default function NewProductPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
-                    SKU Code <span className="text-muted-foreground font-normal">(Auto-generated if empty)</span>
+                    SKU Code <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="text"
                     name="sku_code"
                     value={formData.sku_code}
                     onChange={handleChange}
+                    required
                     placeholder="e.g. SHE-L-042"
                     className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
                   />
@@ -294,24 +345,20 @@ export default function NewProductPage() {
           {/* Section 3: Stock Control & Categories */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Stock Levels & Classification</CardTitle>
+              <CardTitle className="text-base">Stock Thresholds & Classification</CardTitle>
               <CardDescription className="text-xs">Inventory safety limits and organizational hierarchy</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
-                    Initial Stock Count
+                    Current Stock <span className="text-muted-foreground font-normal">(Adjust via Stock Ledger)</span>
                   </label>
                   <input
-                    type="number"
-                    name="current_stock"
-                    value={formData.current_stock}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.01"
-                    placeholder="0"
-                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    type="text"
+                    disabled
+                    value={`${formData.current_stock} ${formData.unit}`}
+                    className="w-full px-3 py-2 rounded-lg border border-input bg-muted text-muted-foreground text-sm font-mono cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -395,18 +442,18 @@ export default function NewProductPage() {
           {/* Form Actions Footer */}
           <div className="flex items-center justify-end gap-3 pt-2">
             <Button variant="outline" type="button" asChild>
-              <Link href="/products">Cancel</Link>
+              <Link href={`/products/${params.id}`}>Cancel</Link>
             </Button>
-            <Button type="submit" disabled={loading} className="min-w-[120px]">
-              {loading ? (
+            <Button type="submit" disabled={submitting} className="min-w-[120px]">
+              {submitting ? (
                 <>
                   <Icons.refresh className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
+                  Updating...
                 </>
               ) : (
                 <>
-                  <Icons.success className="w-4 h-4 mr-1.5" />
-                  Save Product
+                  <Icons.save className="w-4 h-4 mr-1.5" />
+                  Save Changes
                 </>
               )}
             </Button>

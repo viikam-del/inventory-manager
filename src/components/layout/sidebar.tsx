@@ -26,6 +26,7 @@ const navSections: NavSection[] = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: Icons.dashboard },
+      { name: 'Reminders & Alerts', href: '/reminders', icon: Icons.bell },
     ],
   },
   {
@@ -33,6 +34,8 @@ const navSections: NavSection[] = [
     items: [
       { name: 'Sales Orders', href: '/sales-orders', icon: Icons.sales },
       { name: 'Purchase Orders', href: '/purchase-orders', icon: Icons.purchase },
+      { name: 'Customer Returns', href: '/customer-returns', icon: Icons.returns },
+      { name: 'Supplier Returns', href: '/supplier-returns', icon: Icons.supplierReturns },
     ],
   },
   {
@@ -40,6 +43,7 @@ const navSections: NavSection[] = [
     items: [
       { name: 'Products Catalog', href: '/products', icon: Icons.products },
       { name: 'Stock Receipts (GRN)', href: '/receipts', icon: Icons.receipts },
+      { name: 'Stock Adjustments', href: '/stock-adjustments', icon: Icons.stockAdjustments },
     ],
   },
   {
