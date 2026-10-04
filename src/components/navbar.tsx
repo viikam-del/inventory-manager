@@ -22,6 +22,10 @@ export const Navbar = () => {
     { name: 'Purchase Orders', href: '/purchase-orders', icon: Icons.purchase },
     { name: 'Receipts (GRN)', href: '/receipts', icon: Icons.receipts },
     { name: 'Sales Orders', href: '/sales-orders', icon: Icons.sales },
+    { name: 'Returns', href: '/customer-returns', icon: Icons.returns },
+    { name: 'Supplier Returns', href: '/supplier-returns', icon: Icons.supplierReturns },
+    { name: 'Adjustments', href: '/stock-adjustments', icon: Icons.stockAdjustments },
+    { name: 'Reminders', href: '/reminders', icon: Icons.bell },
     { name: 'Payments', href: '/payments', icon: Icons.payments },
   ];
 

@@ -71,6 +71,8 @@ export default function ProductDetailPage() {
       // Collect IDs
       const receiptIds = adjustments.filter((a: any) => a.reference_type === 'Receipt' && a.reference_id).map((a: any) => a.reference_id);
       const soIds = adjustments.filter((a: any) => a.reference_type === 'SalesOrder' && a.reference_id).map((a: any) => a.reference_id);
+      const crIds = adjustments.filter((a: any) => (a.reference_type === 'Customer Return' || a.reference_type === 'Return') && a.reference_id).map((a: any) => a.reference_id);
+      const srIds = adjustments.filter((a: any) => a.reference_type === 'Supplier Return' && a.reference_id).map((a: any) => a.reference_id);
 
       // Fetch receipts (for purchases)
       const receiptsMap = new Map();
@@ -108,6 +110,50 @@ export default function ProductDetailPage() {
         }
       }
 
+      // Fetch Customer Returns
+      const crMap = new Map();
+      if (crIds.length > 0) {
+        try {
+          const { data: crData } = await supabase
+            .from('customer_returns')
+            .select('id, return_number, customers(company_name)')
+            .in('id', crIds);
+
+          if (crData) {
+            crData.forEach((cr: any) => {
+              crMap.set(cr.id, {
+                number: cr.return_number,
+                counterparty: cr.customers?.company_name || 'Customer'
+              });
+            });
+          }
+        } catch (e) {
+          console.error('Failed to fetch customer returns for ledger', e);
+        }
+      }
+
+      // Fetch Supplier Returns
+      const srMap = new Map();
+      if (srIds.length > 0) {
+        try {
+          const { data: srData } = await supabase
+            .from('supplier_returns')
+            .select('id, return_number, suppliers(company_name)')
+            .in('id', srIds);
+
+          if (srData) {
+            srData.forEach((sr: any) => {
+              srMap.set(sr.id, {
+                number: sr.return_number,
+                counterparty: sr.suppliers?.company_name || 'Supplier'
+              });
+            });
+          }
+        } catch (e) {
+          console.error('Failed to fetch supplier returns for ledger', e);
+        }
+      }
+
       // 3. Map and enrich running balance
       let runningBalance = 0;
 
@@ -118,8 +164,8 @@ export default function ProductDetailPage() {
         runningBalance += change;
 
         let display_type = 'Manual Adjustment';
-        let reference_number = adj.id.substring(0, 8); // fallback
-        let counterparty = '-';
+        let reference_number = adj.id ? adj.id.substring(0, 8) : 'ADJ-MANUAL';
+        let counterparty = 'Manual Entry';
 
         if (adj.reference_type === 'Receipt') {
           display_type = 'Purchase Inbound';
@@ -135,9 +181,49 @@ export default function ProductDetailPage() {
             reference_number = so.number;
             counterparty = so.counterparty;
           }
-        } else if (adj.reference_type === 'Return') {
-          display_type = 'Return';
-          // Would fetch return number similarly if implemented
+        } else if (adj.reference_type === 'Customer Return' || adj.reference_type === 'Return') {
+          display_type = 'Customer Return';
+          const cr = crMap.get(adj.reference_id);
+          if (cr) {
+            reference_number = cr.number;
+            counterparty = cr.counterparty;
+          } else {
+            reference_number = 'CR-RETURN';
+            counterparty = 'Customer Return';
+          }
+        } else if (adj.reference_type === 'Supplier Return') {
+          display_type = 'Vendor Return';
+          const sr = srMap.get(adj.reference_id);
+          if (sr) {
+            reference_number = sr.number;
+            counterparty = sr.counterparty;
+          } else {
+            reference_number = 'SR-DEBIT';
+            counterparty = 'Vendor Return';
+          }
+        } else if (adj.reference_type === 'Physical Count') {
+          display_type = 'Physical Count';
+          reference_number = 'SHELF-AUDIT';
+          counterparty = 'Warehouse Shelf Audit';
+        } else if (adj.reference_type === 'Cycle Count') {
+          display_type = 'Cycle Count';
+          reference_number = 'CYCLE-AUDIT';
+          counterparty = 'Cycle Count Audit';
+        } else if (adj.reference_type === 'Damage Write-off') {
+          display_type = 'Damage Write-off';
+          reference_number = 'LOSS-SCRAP';
+          counterparty = 'Loss / Damage Write-off';
+        } else if (adj.reference_type === 'Internal Consumption') {
+          display_type = 'Internal Sample';
+          reference_number = 'INTERNAL-USE';
+          counterparty = 'Internal Sample';
+        } else if (adj.reference_type === 'Surplus / Found') {
+          display_type = 'Surplus Found';
+          reference_number = 'SURPLUS-DISC';
+          counterparty = 'Stock Discovery';
+        } else if (adj.reference_type) {
+          display_type = adj.reference_type;
+          counterparty = '-';
         }
 
         return {
@@ -256,6 +342,12 @@ export default function ProductDetailPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" asChild className="h-8 gap-1.5 text-xs shadow-xs">
+              <Link href={`/stock-adjustments/new?product_id=${product.id}`}>
+                <Icons.stockAdjustments className="w-3.5 h-3.5" /> Adjust / Reconcile
+              </Link>
+            </Button>
+
             <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs">
               <Link href={`/products/${product.id}/edit`}>
                 <Icons.edit className="w-3.5 h-3.5" /> Edit Product

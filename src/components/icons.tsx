@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Clock,
   CreditCard,
   FileText,
   LayoutDashboard,
@@ -45,7 +46,8 @@ import {
   SlidersHorizontal,
   Command,
   HelpCircle,
-  FolderTree
+  FolderTree,
+  Scale
 } from 'lucide-react';
 
 export const Icons = {
@@ -99,6 +101,9 @@ export const Icons = {
   trendUp: TrendingUp,
   trendDown: TrendingDown,
   undo: RotateCcw,
+  returns: RotateCcw,
+  supplierReturns: ArrowUpFromLine,
+  clock: Clock,
   sun: Sun,
   moon: Moon,
   bell: Bell,
@@ -106,4 +111,6 @@ export const Icons = {
   filter: SlidersHorizontal,
   help: HelpCircle,
   categories: FolderTree,
+  stockAdjustments: Scale,
+  scale: Scale,
 };

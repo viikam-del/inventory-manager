@@ -90,6 +90,32 @@ export default function NewProductPage() {
         sku = `${namePart}-${unitPart}-${randomPart}`;
       }
 
+      // Check for duplicate non-deleted products
+      const { existingProducts, error: checkError } = await supabase
+        .from('products')
+        .select('id, name, sku_code')
+        .or(`name.eq.${formData.name},sku_code.eq.${sku}`)
+        .eq('is_deleted', false)
+        .limit(2);
+
+      if (checkError) throw checkError;
+
+      if (existingProducts && existingProducts.length > 0) {
+        const hasDuplicateName = existingProducts.some(p => p.name.toLowerCase() === formData.name.toLowerCase());
+        const hasDuplicateSku = existingProducts.some(p => p.sku_code === sku);
+
+        let errorMessage = 'A product with this ';
+        if (hasDuplicateName && hasDuplicateSku) {
+          errorMessage += 'name and SKU code already exists.';
+        } else if (hasDuplicateName) {
+          errorMessage += 'name already exists.';
+        } else {
+          errorMessage += 'SKU code already exists.';
+        }
+
+        throw new Error(errorMessage);
+      }
+
       const { error: insertError } = await supabase.from('products').insert({
         name: formData.name,
         sku_code: sku,
