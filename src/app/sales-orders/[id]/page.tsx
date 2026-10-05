@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
+import { Timeline } from '@/components/ui/timeline';
+import { logAuditEvent, getAuditLogsForEntity, AuditLog } from '@/lib/audit';
 
 interface OrderLine {
   id: string;
@@ -64,6 +66,7 @@ export default function SalesOrderDetailPage() {
   const [error, setError] = useState('');
   const [tallyInvoiceInput, setTallyInvoiceInput] = useState('');
   const [showTallyModal, setShowTallyModal] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   async function fetchOrderDetails() {
     setLoading(true);
@@ -86,6 +89,12 @@ export default function SalesOrderDetailPage() {
 
       if (linesError) throw linesError;
       setLines(linesData || []);
+
+      // Fetch audit logs
+      if (params.id) {
+        const logs = await getAuditLogsForEntity('sales_order', params.id as string);
+        setAuditLogs(logs);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load order');
     } finally {
@@ -148,6 +157,25 @@ export default function SalesOrderDetailPage() {
 
       if (updateError) throw updateError;
 
+      // Log audit event for fulfillment
+      void logAuditEvent(
+        'sales_order',
+        order.id,
+        'fulfill',
+        { status: { old: order.status, new: 'Delivered' } },
+        {
+          order_number: order.order_number,
+          customer_name: order.customers?.company_name,
+          items_delivered: lines.length,
+          grand_total: grandTotal,
+        }
+      );
+
+      if (params.id) {
+        const updatedLogs = await getAuditLogsForEntity('sales_order', params.id as string);
+        setAuditLogs(updatedLogs);
+      }
+
       setOrder(prev => prev ? { ...prev, status: 'Delivered' } : null);
     } catch (err: any) {
       alert(err.message || 'Failed to mark as delivered');
@@ -163,15 +191,37 @@ export default function SalesOrderDetailPage() {
     setActionLoading(true);
 
     try {
+      const oldStatus = order.status;
+      const newStatus = tallyInvoiceInput.trim() ? 'Invoiced' : order.status;
+
       const { error: updateError } = await supabase
         .from('sales_orders')
         .update({
           tally_invoice_number: tallyInvoiceInput.trim() || null,
-          status: tallyInvoiceInput.trim() ? 'Invoiced' : order.status
+          status: newStatus
         })
         .eq('id', order.id);
 
       if (updateError) throw updateError;
+
+      void logAuditEvent(
+        'sales_order',
+        order.id,
+        'update',
+        {
+          tally_invoice_number: { old: order.tally_invoice_number, new: tallyInvoiceInput.trim() || null },
+          status: { old: oldStatus, new: newStatus },
+        },
+        {
+          order_number: order.order_number,
+          action_type: 'link_tally_invoice',
+        }
+      );
+
+      if (params.id) {
+        const updatedLogs = await getAuditLogsForEntity('sales_order', params.id as string);
+        setAuditLogs(updatedLogs);
+      }
 
       setOrder(prev => prev ? {
         ...prev,
@@ -196,6 +246,20 @@ export default function SalesOrderDetailPage() {
         .eq('id', params.id);
 
       if (cancelError) throw cancelError;
+
+      void logAuditEvent(
+        'sales_order',
+        order?.id || (params.id as string),
+        'delete',
+        { status: { old: order?.status, new: 'Cancelled' } },
+        { order_number: order?.order_number, reason: 'Order Cancelled by operator' }
+      );
+
+      if (params.id) {
+        const updatedLogs = await getAuditLogsForEntity('sales_order', params.id as string);
+        setAuditLogs(updatedLogs);
+      }
+
       setOrder(prev => prev ? { ...prev, status: 'Cancelled' } : null);
     } catch (err: any) {
       alert(err.message || 'Failed to cancel order');
@@ -212,6 +276,20 @@ export default function SalesOrderDetailPage() {
         .eq('id', params.id);
 
       if (confirmError) throw confirmError;
+
+      void logAuditEvent(
+        'sales_order',
+        order?.id || (params.id as string),
+        'update',
+        { status: { old: order?.status, new: 'Confirmed' } },
+        { order_number: order?.order_number }
+      );
+
+      if (params.id) {
+        const updatedLogs = await getAuditLogsForEntity('sales_order', params.id as string);
+        setAuditLogs(updatedLogs);
+      }
+
       setOrder(prev => prev ? { ...prev, status: 'Confirmed' } : null);
     } catch (err: any) {
       alert(err.message || 'Failed to confirm order');
@@ -224,9 +302,17 @@ export default function SalesOrderDetailPage() {
     if (!confirm('Permanently delete this Sales Order?')) return;
     setActionLoading(true);
     try {
+      const archivedNumber = order?.order_number && !order.order_number.includes('-DEL-')
+        ? `${order.order_number}-DEL-${(params.id as string).slice(0, 8)}`
+        : order?.order_number;
+
       const { error: deleteError } = await supabase
         .from('sales_orders')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { order_number: archivedNumber } : {})
+        })
         .eq('id', params.id);
 
       if (deleteError) throw deleteError;
@@ -577,6 +663,13 @@ export default function SalesOrderDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Activity & Audit Timeline */}
+      <Timeline
+        logs={auditLogs}
+        title="Order Activity & Audit Trail"
+        emptyMessage="No audit trail events recorded yet for this sales order."
+      />
 
       {/* Modal for Tally Invoice Input */}
       <Modal

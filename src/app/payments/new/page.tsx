@@ -8,6 +8,7 @@ import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
+import { logAuditEvent } from '@/lib/audit';
 
 interface Customer {
   id: string;
@@ -40,24 +41,28 @@ function PaymentFormContent() {
       try {
         const [customersRes, lastPaymentRes] = await Promise.all([
           supabase.from('customers').select('id, company_name, opening_balance').eq('is_deleted', false).order('company_name'),
-          supabase.from('payments').select('payment_number').not('payment_number', 'is', null).order('payment_number', { ascending: false }).limit(1)
+          supabase.from('payments').select('payment_number').eq('is_deleted', false).not('payment_number', 'is', null)
         ]);
 
         if (customersRes.error) throw customersRes.error;
         setCustomers(customersRes.data || []);
 
-        if (lastPaymentRes.data && lastPaymentRes.data.length > 0 && lastPaymentRes.data[0].payment_number) {
-          const lastPAY = lastPaymentRes.data[0].payment_number;
-          const match = lastPAY.match(/PAY-(\d+)/);
-          if (match && match[1]) {
-            const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, payment_number: `PAY-${String(nextNum).padStart(4, '0')}` }));
-          } else {
-            setFormData(prev => ({ ...prev, payment_number: `PAY-${Date.now().toString().slice(-4)}` }));
+        let maxNum = 0;
+        if (lastPaymentRes.data && lastPaymentRes.data.length > 0) {
+          for (const row of lastPaymentRes.data) {
+            if (row.payment_number && !row.payment_number.includes('-DEL-')) {
+              const match = row.payment_number.match(/PAY-(\d+)/i);
+              if (match && match[1]) {
+                const val = parseInt(match[1], 10);
+                if (!isNaN(val) && val > maxNum) {
+                  maxNum = val;
+                }
+              }
+            }
           }
-        } else {
-          setFormData(prev => ({ ...prev, payment_number: `PAY-0001` }));
         }
+        const nextNum = maxNum + 1;
+        setFormData(prev => ({ ...prev, payment_number: `PAY-${String(nextNum).padStart(4, '0')}` }));
       } catch (err: any) {
         setError(err.message || 'Failed to load form data');
       } finally {
@@ -82,7 +87,7 @@ function PaymentFormContent() {
 
     setLoading(true);
     try {
-      const { error: insertError } = await supabase
+      const { data: newPayment, error: insertError } = await supabase
         .from('payments')
         .insert([{
           payment_number: formData.payment_number,
@@ -92,9 +97,27 @@ function PaymentFormContent() {
           payment_method: formData.payment_method,
           reference_number: formData.reference_number || null,
           notes: formData.notes || null,
-        }]);
+        }])
+        .select('id')
+        .single();
 
       if (insertError) throw insertError;
+
+      if (newPayment?.id) {
+        void logAuditEvent(
+          'payment',
+          newPayment.id,
+          'payment_received',
+          null,
+          {
+            payment_number: formData.payment_number,
+            customer_id: formData.customer_id,
+            amount: parseFloat(formData.amount),
+            payment_method: formData.payment_method,
+            payment_date: formData.payment_date,
+          }
+        );
+      }
 
       router.push('/payments');
     } catch (err: any) {

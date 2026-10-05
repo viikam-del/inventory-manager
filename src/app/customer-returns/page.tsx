@@ -114,11 +114,16 @@ export default function CustomerReturnsPage() {
 
     setActionLoading(id);
     try {
+      const archivedNumber = returnNumber && !returnNumber.includes('-DEL-')
+        ? `${returnNumber}-DEL-${id.slice(0, 8)}`
+        : returnNumber;
+
       const { error: delError } = await supabase
         .from('customer_returns')
         .update({
           is_deleted: true,
           deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { return_number: archivedNumber } : {})
         })
         .eq('id', id);
 

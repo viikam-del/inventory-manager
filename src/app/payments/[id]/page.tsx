@@ -12,6 +12,7 @@ import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
 
 interface Payment {
   id: string;
+  payment_number?: string | null;
   customer_id: string;
   amount: number;
   payment_date: string;
@@ -62,9 +63,17 @@ export default function PaymentDetailPage() {
 
     setActionLoading(true);
     try {
+      const archivedNumber = payment?.payment_number && !payment.payment_number.includes('-DEL-')
+        ? `${payment.payment_number}-DEL-${(params.id as string).slice(0, 8)}`
+        : payment?.payment_number;
+
       const { error: deleteError } = await supabase
         .from('payments')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { payment_number: archivedNumber } : {})
+        })
         .eq('id', params.id);
 
       if (deleteError) throw deleteError;

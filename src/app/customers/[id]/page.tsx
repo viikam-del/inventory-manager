@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
+import { Timeline } from '@/components/ui/timeline';
+import { getAuditLogsForEntity, logAuditEvent, AuditLog } from '@/lib/audit';
+import { cn } from '@/lib/utils';
 
 interface Customer {
   id: string;
@@ -36,6 +39,7 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [ledger, setLedger] = useState<any[]>([]);
   const [outstandingBalance, setOutstandingBalance] = useState<number | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [ledgerLoading, setLedgerLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -53,12 +57,24 @@ export default function CustomerDetailPage() {
 
       if (supabaseError) throw supabaseError;
       setCustomer(data);
-      if (data) fetchLedger(data);
+      if (data) {
+        fetchLedger(data);
+        fetchAuditLogs(data.id);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load customer details';
       setError(message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchAuditLogs(customerId: string) {
+    try {
+      const logs = await getAuditLogsForEntity('customer', customerId);
+      setAuditLogs(logs);
+    } catch (err) {
+      console.warn('Failed to load customer audit logs', err);
     }
   }
 
@@ -133,6 +149,11 @@ export default function CustomerDetailPage() {
         .eq('id', params.id);
 
       if (supabaseError) throw supabaseError;
+      void logAuditEvent('customer', params.id as string, 'delete', null, {
+        company_name: customer?.company_name,
+        contact_person: customer?.contact_person,
+        phone: customer?.phone,
+      });
       router.push('/customers');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to delete customer';
@@ -172,6 +193,13 @@ export default function CustomerDetailPage() {
       </PageContainer>
     );
   }
+
+  const creditLimit = customer.credit_limit ? Number(customer.credit_limit) : 0;
+  const currentDue = outstandingBalance ?? 0;
+  const availableCredit = creditLimit > 0 ? creditLimit - currentDue : null;
+  const utilizationPct = creditLimit > 0 ? Math.max(0, (currentDue / creditLimit) * 100) : 0;
+  const isCreditExceeded = creditLimit > 0 && currentDue > creditLimit;
+  const isCreditWarning = creditLimit > 0 && utilizationPct >= 80 && !isCreditExceeded;
 
   return (
     <PageContainer>
@@ -289,8 +317,22 @@ export default function CustomerDetailPage() {
         {/* Financial Block */}
         <Card>
           <CardHeader className="pb-3 hidden sm:flex">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <Icons.payments className="w-4 h-4 text-primary" /> Billing & Credit
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Icons.payments className="w-4 h-4 text-primary" /> Billing & Credit
+              </span>
+              {creditLimit > 0 && (
+                <Badge
+                  variant={isCreditExceeded ? 'destructive' : isCreditWarning ? 'warning' : 'success'}
+                  className="text-[10px]"
+                >
+                  {isCreditExceeded
+                    ? 'Limit Breached'
+                    : isCreditWarning
+                    ? 'High Exposure'
+                    : 'Healthy Credit'}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 pt-4 sm:pt-0 text-sm">
@@ -318,10 +360,63 @@ export default function CustomerDetailPage() {
                 </span>
               </div>
             )}
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center pb-2 border-b border-border/50">
               <span className="text-muted-foreground">Due Term</span>
               <span className="font-medium text-foreground">{customer.default_due_days} Days</span>
             </div>
+
+            {/* Credit Utilization Bar & Headroom */}
+            {creditLimit > 0 && (
+              <div className="pt-2 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground font-medium">Credit Utilization</span>
+                  <span
+                    className={cn(
+                      'font-mono font-bold',
+                      isCreditExceeded
+                        ? 'text-destructive'
+                        : isCreditWarning
+                        ? 'text-amber-500'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    )}
+                  >
+                    {utilizationPct.toFixed(1)}%
+                  </span>
+                </div>
+
+                <div className="w-full bg-muted rounded-full h-2 overflow-hidden border border-border/40">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      isCreditExceeded
+                        ? 'bg-destructive'
+                        : isCreditWarning
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    )}
+                    style={{ width: `${Math.min(100, utilizationPct)}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <span className="text-muted-foreground">
+                    {isCreditExceeded ? 'Excess Exposure:' : 'Available Headroom:'}
+                  </span>
+                  <span
+                    className={cn(
+                      'font-mono font-bold',
+                      isCreditExceeded
+                        ? 'text-destructive'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    )}
+                  >
+                    {isCreditExceeded
+                      ? `+₹${(currentDue - creditLimit).toLocaleString('en-IN')}`
+                      : `₹${(availableCredit ?? 0).toLocaleString('en-IN')}`}
+                  </span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -434,6 +529,15 @@ export default function CustomerDetailPage() {
             </div>
           </Card>
         )}
+
+        {/* Customer Activity & Audit Timeline */}
+        <div className="mt-8">
+          <Timeline
+            logs={auditLogs}
+            title="Customer Activity & Audit History"
+            emptyMessage="No audit logs recorded for this customer yet."
+          />
+        </div>
       </div>
     </PageContainer>
   );

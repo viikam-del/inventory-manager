@@ -84,9 +84,18 @@ export default function SalesOrdersPage() {
     if (!confirm('Are you sure you want to delete this sales order?')) return;
     setActionLoading(orderId);
     try {
+      const targetOrder = orders.find(o => o.id === orderId);
+      const archivedNumber = targetOrder?.order_number && !targetOrder.order_number.includes('-DEL-')
+        ? `${targetOrder.order_number}-DEL-${orderId.slice(0, 8)}`
+        : targetOrder?.order_number;
+
       const { error: deleteError } = await supabase
         .from('sales_orders')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { order_number: archivedNumber } : {})
+        })
         .eq('id', orderId);
 
       if (deleteError) throw deleteError;

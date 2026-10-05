@@ -15,6 +15,8 @@ interface POLine {
   product_id: string;
   quantity: number;
   unit_cost: number;
+  billed_rate?: number;
+  cash_rate?: number;
   gst_amount: number;
   is_billed: boolean;
   total_amount: number;
@@ -174,6 +176,9 @@ export default function PurchaseOrderDetailPage() {
 
       // 2. Process each line item for stock update and receipt lines
       for (const line of lines) {
+        const lineBilledRate = Number(line.billed_rate) || (line.is_billed ? Number(line.unit_cost) || 0 : 0);
+        const lineCashRate = Number(line.cash_rate) || (!line.is_billed ? Number(line.unit_cost) || 0 : 0);
+
         // Insert into receipt_lines
         const { error: lineError } = await supabase
           .from('receipt_lines')
@@ -182,6 +187,8 @@ export default function PurchaseOrderDetailPage() {
             product_id: line.product_id,
             quantity_received: line.quantity,
             unit_cost: line.unit_cost,
+            billed_rate: lineBilledRate,
+            cash_rate: lineCashRate,
             gst_amount: line.gst_amount,
             is_billed: line.is_billed,
           }]);
@@ -245,9 +252,17 @@ export default function PurchaseOrderDetailPage() {
     if (!confirm('Delete this Purchase Order? This will move it to the archive.')) return;
     setActionLoading(true);
     try {
+      const archivedNumber = po?.po_number && !po.po_number.includes('-DEL-')
+        ? `${po.po_number}-DEL-${(params.id as string).slice(0, 8)}`
+        : po?.po_number;
+
       const { error: deleteError } = await supabase
         .from('purchase_orders')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { po_number: archivedNumber } : {})
+        })
         .eq('id', params.id);
 
       if (deleteError) throw deleteError;
@@ -291,10 +306,17 @@ export default function PurchaseOrderDetailPage() {
     );
   }
 
-  const subtotal = lines.reduce((acc, l) => acc + (l.quantity * l.unit_cost), 0);
-  const billedSubtotal = lines.reduce((acc, l) => acc + (l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
-  const cashSubtotal = lines.reduce((acc, l) => acc + (!l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
+  const billedSubtotal = lines.reduce((acc, l) => {
+    const bRate = Number(l.billed_rate) || (l.is_billed ? Number(l.unit_cost) || 0 : 0);
+    return acc + (l.quantity * bRate);
+  }, 0);
+  const cashSubtotal = lines.reduce((acc, l) => {
+    const cRate = Number(l.cash_rate) || (!l.is_billed ? Number(l.unit_cost) || 0 : 0);
+    return acc + (l.quantity * cRate);
+  }, 0);
+  const subtotal = billedSubtotal + cashSubtotal;
   const totalGst = lines.reduce((acc, l) => acc + (l.gst_amount || 0), 0);
+  const billedTaxInvoice = billedSubtotal + totalGst;
   const grandTotal = subtotal + totalGst + Number(po.delivery_charges || 0);
 
   const getStatusBadge = (status: PurchaseOrder['status']) => {
@@ -478,37 +500,51 @@ export default function PurchaseOrderDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {lines.map((l) => (
-                <tr key={l.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-foreground">
-                    {l.products?.name || 'Unknown Product'}
-                  </td>
-                  <td className="px-5 py-3.5 text-muted-foreground font-mono text-xs">
-                    {l.products?.sku_code || '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
-                    {l.quantity} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
-                    ₹{Number(l.unit_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-5 py-3.5 text-center">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
-                      l.is_billed
-                        ? 'bg-primary/10 text-primary border border-primary/20'
-                        : 'bg-orange-500/10 text-orange-600 border border-orange-500/20'
-                    }`}>
-                      {l.is_billed ? 'Billed' : 'Cash'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
-                    ₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
-                    ₹{(Number(l.quantity * l.unit_cost) + Number(l.gst_amount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
+              {lines.map((l) => {
+                const bRate = Number(l.billed_rate) || (l.is_billed ? Number(l.unit_cost) || 0 : 0);
+                const cRate = Number(l.cash_rate) || (!l.is_billed ? Number(l.unit_cost) || 0 : 0);
+                const isSplit = bRate > 0 && cRate > 0;
+                const lineCost = (l.quantity * (bRate + cRate)) + Number(l.gst_amount || 0);
+
+                return (
+                  <tr key={l.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-foreground">
+                      {l.products?.name || 'Unknown Product'}
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground font-mono text-xs">
+                      {l.products?.sku_code || '—'}
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
+                      {l.quantity} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono text-foreground">
+                      <div>₹{Number(l.unit_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                      {isSplit && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          Bill: ₹{bRate.toLocaleString('en-IN')} | Cash: ₹{cRate.toLocaleString('en-IN')}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
+                        isSplit
+                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+                          : l.is_billed
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : 'bg-orange-500/10 text-orange-600 border border-orange-500/20'
+                      }`}>
+                        {isSplit ? 'Split (Bill + Cash)' : l.is_billed ? 'Billed (100%)' : 'Cash (100%)'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
+                      ₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
+                      ₹{lineCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -516,7 +552,7 @@ export default function PurchaseOrderDetailPage() {
         {/* Totals Summary */}
         <div className="p-4 sm:p-6 bg-muted/20 border-t border-border/60 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-            <span>Billed Subtotal:</span>
+            <span>Billed Subtotal (Taxable):</span>
             <span className="font-mono font-medium text-foreground">₹{billedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
@@ -526,6 +562,10 @@ export default function PurchaseOrderDetailPage() {
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
             <span>Total Input GST (ITC):</span>
             <span className="font-mono font-medium text-foreground">₹{totalGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex justify-between w-full max-w-xs text-muted-foreground pt-1 border-t border-dashed border-border/60">
+            <span>Billed Tax Invoice Total:</span>
+            <span className="font-mono font-semibold text-primary">₹{billedTaxInvoice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           {Number(po.delivery_charges) > 0 && (
             <div className="flex justify-between w-full max-w-xs text-muted-foreground">

@@ -84,20 +84,28 @@ export default function PurchaseOrdersPage() {
       // 2. Generate sequential GRN number
       let receiptNumber = `GRN-${Date.now().toString().slice(-6)}`;
       try {
-        const { data: lastReceiptData } = await supabase
+        const { data: allReceipts } = await supabase
           .from('receipts')
           .select('receipt_number')
-          .not('receipt_number', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(1);
+          .eq('is_deleted', false)
+          .not('receipt_number', 'is', null);
 
-        if (lastReceiptData && lastReceiptData.length > 0 && lastReceiptData[0].receipt_number) {
-          const lastGRN = lastReceiptData[0].receipt_number;
-          const match = lastGRN.match(/GRN-(\d+)/);
-          if (match && match[1]) {
-            const nextNum = parseInt(match[1], 10) + 1;
-            receiptNumber = `GRN-${String(nextNum).padStart(4, '0')}`;
+        let maxNum = 0;
+        if (allReceipts && allReceipts.length > 0) {
+          for (const row of allReceipts) {
+            if (row.receipt_number && !row.receipt_number.includes('-DEL-')) {
+              const match = row.receipt_number.match(/GRN-(\d+)/i);
+              if (match && match[1]) {
+                const val = parseInt(match[1], 10);
+                if (!isNaN(val) && val > maxNum) {
+                  maxNum = val;
+                }
+              }
+            }
           }
+        }
+        if (maxNum > 0) {
+          receiptNumber = `GRN-${String(maxNum + 1).padStart(4, '0')}`;
         }
       } catch (e) {
         console.warn('Fallback to timestamp GRN', e);
@@ -189,9 +197,18 @@ export default function PurchaseOrdersPage() {
   const handleDeletePO = async (id: string) => {
     if (!confirm('Delete this Purchase Order? This will move it to the archive.')) return;
     try {
+      const targetPO = pos.find(p => p.id === id);
+      const archivedNumber = targetPO?.po_number && !targetPO.po_number.includes('-DEL-')
+        ? `${targetPO.po_number}-DEL-${id.slice(0, 8)}`
+        : targetPO?.po_number;
+
       const { error } = await supabase
         .from('purchase_orders')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { po_number: archivedNumber } : {})
+        })
         .eq('id', id);
       if (error) throw error;
       fetchPOs();

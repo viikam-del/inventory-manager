@@ -85,7 +85,7 @@ function NewSupplierReturnForm() {
         const [suppliersRes, productsRes, lastReturnRes] = await Promise.all([
           supabase.from('suppliers').select('id, company_name, phone, contact_person').eq('is_deleted', false).order('company_name'),
           supabase.from('products').select('id, name, sku_code, unit, price_non_gst, price_gst, current_stock, default_supplier_id').eq('is_deleted', false).order('name'),
-          supabase.from('supplier_returns').select('return_number').not('return_number', 'is', null).order('return_number', { ascending: false }).limit(1),
+          supabase.from('supplier_returns').select('return_number').eq('is_deleted', false).not('return_number', 'is', null),
         ]);
 
         if (suppliersRes.error) throw suppliersRes.error;
@@ -94,19 +94,23 @@ function NewSupplierReturnForm() {
         setSuppliers(suppliersRes.data || []);
         setProducts(productsRes.data || []);
 
-        // Generate sequential Return Number: SR-0001
-        if (lastReturnRes.data && lastReturnRes.data.length > 0 && lastReturnRes.data[0].return_number) {
-          const lastNumStr = lastReturnRes.data[0].return_number;
-          const match = lastNumStr.match(/SR-(\d+)/);
-          if (match && match[1]) {
-            const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, return_number: `SR-${String(nextNum).padStart(4, '0')}` }));
-          } else {
-            setFormData(prev => ({ ...prev, return_number: `SR-${Date.now().toString().slice(-4)}` }));
+        // Generate sequential Return Number: SR-0001 from highest active return number
+        let maxNum = 0;
+        if (lastReturnRes.data && lastReturnRes.data.length > 0) {
+          for (const row of lastReturnRes.data) {
+            if (row.return_number && !row.return_number.includes('-DEL-')) {
+              const match = row.return_number.match(/SR-(\d+)/i);
+              if (match && match[1]) {
+                const val = parseInt(match[1], 10);
+                if (!isNaN(val) && val > maxNum) {
+                  maxNum = val;
+                }
+              }
+            }
           }
-        } else {
-          setFormData(prev => ({ ...prev, return_number: 'SR-0001' }));
         }
+        const nextNum = maxNum + 1;
+        setFormData(prev => ({ ...prev, return_number: `SR-${String(nextNum).padStart(4, '0')}` }));
       } catch (err: any) {
         setError(err.message || 'Failed to load initial data');
       } finally {

@@ -27,6 +27,7 @@ const navSections: NavSection[] = [
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: Icons.dashboard },
       { name: 'Reminders & Alerts', href: '/reminders', icon: Icons.bell },
+      { name: 'System Audit Logs', href: '/audit-logs', icon: Icons.timeline },
     ],
   },
   {
@@ -50,6 +51,7 @@ const navSections: NavSection[] = [
     title: 'Finance & Ledger',
     items: [
       { name: 'Payments & Collections', href: '/payments', icon: Icons.payments },
+      { name: 'Customer Aging (AR)', href: '/reports/customer-aging', icon: Icons.aging },
     ],
   },
   {

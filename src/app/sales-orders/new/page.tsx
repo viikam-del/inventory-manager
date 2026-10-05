@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
+import { logAuditEvent } from '@/lib/audit';
+import { cn } from '@/lib/utils';
 
 interface Customer {
   id: string;
@@ -23,6 +25,7 @@ interface Customer {
   is_gst_customer: boolean;
   credit_limit: number | null;
   opening_balance: number;
+  default_due_days?: number | null;
 }
 
 interface Product {
@@ -55,6 +58,11 @@ export default function NewSalesOrderPage() {
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState('');
 
+  // Credit health and managerial guardrail states
+  const [customerOutstanding, setCustomerOutstanding] = useState<number | null>(null);
+  const [loadingCredit, setLoadingCredit] = useState(false);
+  const [managerOverride, setManagerOverride] = useState(false);
+
   const [formData, setFormData] = useState({
     order_number: 'Generating...',
     customer_id: '',
@@ -78,7 +86,7 @@ export default function NewSalesOrderPage() {
         const [customersRes, productsRes, lastSORes] = await Promise.all([
           supabase.from('customers').select('*').eq('is_deleted', false).order('company_name'),
           supabase.from('products').select('*').eq('is_deleted', false).order('name'),
-          supabase.from('sales_orders').select('order_number').not('order_number', 'is', null).order('order_number', { ascending: false }).limit(1)
+          supabase.from('sales_orders').select('order_number').eq('is_deleted', false).not('order_number', 'is', null)
         ]);
 
         if (customersRes.error) throw customersRes.error;
@@ -87,19 +95,23 @@ export default function NewSalesOrderPage() {
         setCustomers(customersRes.data || []);
         setProducts(productsRes.data || []);
 
-        // Generate sequential SO number
-        if (lastSORes.data && lastSORes.data.length > 0 && lastSORes.data[0].order_number) {
-          const lastSO = lastSORes.data[0].order_number;
-          const match = lastSO.match(/SO-(\d+)/);
-          if (match && match[1]) {
-            const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, order_number: `SO-${String(nextNum).padStart(4, '0')}` }));
-          } else {
-            setFormData(prev => ({ ...prev, order_number: `SO-${Date.now().toString().slice(-4)}` }));
+        // Generate sequential SO number from highest active SO number
+        let maxNum = 0;
+        if (lastSORes.data && lastSORes.data.length > 0) {
+          for (const row of lastSORes.data) {
+            if (row.order_number && !row.order_number.includes('-DEL-')) {
+              const match = row.order_number.match(/SO-(\d+)/i);
+              if (match && match[1]) {
+                const val = parseInt(match[1], 10);
+                if (!isNaN(val) && val > maxNum) {
+                  maxNum = val;
+                }
+              }
+            }
           }
-        } else {
-          setFormData(prev => ({ ...prev, order_number: `SO-0001` }));
         }
+        const nextNum = maxNum + 1;
+        setFormData(prev => ({ ...prev, order_number: `SO-${String(nextNum).padStart(4, '0')}` }));
       } catch (err: any) {
         setError(err.message || 'Failed to load initial form data');
       } finally {
@@ -109,6 +121,60 @@ export default function NewSalesOrderPage() {
 
     loadData();
   }, []);
+
+  // Synchronize customer financial ledger to compute credit headroom reactively
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerOutstanding(null);
+      setManagerOverride(false);
+      return;
+    }
+
+    let isMounted = true;
+    async function fetchCustomerCredit() {
+      setLoadingCredit(true);
+      try {
+        const [salesRes, payRes] = await Promise.all([
+          supabase
+            .from('sales_orders')
+            .select('total_amount, gst_amount')
+            .eq('customer_id', selectedCustomer!.id)
+            .eq('is_deleted', false),
+          supabase
+            .from('payments')
+            .select('amount')
+            .eq('customer_id', selectedCustomer!.id)
+            .eq('is_deleted', false),
+        ]);
+
+        const totalSales = (salesRes.data || []).reduce(
+          (acc, row) => acc + (Number(row.total_amount) || 0) + (Number(row.gst_amount) || 0),
+          0
+        );
+        const totalPays = (payRes.data || []).reduce(
+          (acc, row) => acc + (Number(row.amount) || 0),
+          0
+        );
+        const currentDue = Number(selectedCustomer!.opening_balance || 0) + totalSales - totalPays;
+
+        if (isMounted) {
+          setCustomerOutstanding(currentDue);
+          setManagerOverride(false);
+        }
+      } catch (err) {
+        console.warn('[Credit Headroom] Failed to query customer ledger:', err);
+      } finally {
+        if (isMounted) {
+          setLoadingCredit(false);
+        }
+      }
+    }
+
+    fetchCustomerCredit();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedCustomer?.id]);
 
   const handleCustomerChange = (customerId: string) => {
     const cust = customers.find(c => c.id === customerId) || null;
@@ -251,32 +317,18 @@ export default function NewSalesOrderPage() {
     const gstAmount = calculateTotalGST();
     const grandTotal = calculateGrandTotal();
 
-    // 2. Credit Limit Validation
-    if (selectedCustomer && selectedCustomer.credit_limit && selectedCustomer.credit_limit > 0) {
-      try {
-        const { data: salesData } = await supabase.from('sales_orders').select('total_amount, gst_amount').eq('customer_id', selectedCustomer.id).eq('is_deleted', false);
-        const { data: payData } = await supabase.from('payments').select('amount').eq('customer_id', selectedCustomer.id).eq('is_deleted', false);
+    // 2. Credit Limit Validation via Manager Override
+    const creditLimit = selectedCustomer?.credit_limit ? Number(selectedCustomer.credit_limit) : 0;
+    const currentDue = customerOutstanding ?? 0;
+    const newOrderAddedValue = grandTotal + (isGstOrder ? gstAmount : 0);
+    const totalProjectedDue = currentDue + newOrderAddedValue;
+    const isExceeded = creditLimit > 0 && totalProjectedDue > creditLimit;
 
-        const totalSales = (salesData || []).reduce((acc, row) => acc + (Number(row.total_amount) || 0) + (Number(row.gst_amount) || 0), 0);
-        const totalPays = (payData || []).reduce((acc, row) => acc + (Number(row.amount) || 0), 0);
-
-        const currentDue = Number(selectedCustomer.opening_balance || 0) + totalSales - totalPays;
-        // As grandTotal is our new amount we are adding to the order, wait, let's align our calculation with payments page
-        // Payments page adds gst_amount to total_amount for the sales_orders.
-        // So this new order will add grandTotal + gstAmount to the customer's due if we follow that metric.
-        // But let's just add grandTotal for sanity check since it holds the total order value.
-        const newOrderAddedValue = grandTotal + gstAmount; // To match the payment page behavior where gst_amount is added
-        const totalProjectedDue = currentDue + newOrderAddedValue;
-
-        if (totalProjectedDue > selectedCustomer.credit_limit) {
-          const msg = `Credit Limit Exceeded!\nCustomer: ${selectedCustomer.company_name}\nCredit Limit: ₹${selectedCustomer.credit_limit.toLocaleString('en-IN')}\n\nCurrent Due: ₹${currentDue.toLocaleString('en-IN')}\nNew Order Value (w/ calculation adj): ₹${newOrderAddedValue.toLocaleString('en-IN')}\nProjected Due: ₹${totalProjectedDue.toLocaleString('en-IN')}\n\nAre you sure you want to approve this order?`;
-          if (!window.confirm(msg)) {
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("Credit limit check failed", err);
-      }
+    if (isExceeded && !managerOverride) {
+      setError(
+        `Credit limit exceeded for ${selectedCustomer?.company_name || 'Customer'}. Projected outstanding balance (₹${Math.round(totalProjectedDue).toLocaleString('en-IN')}) exceeds credit limit (₹${creditLimit.toLocaleString('en-IN')}). Manager override authorization is required to proceed.`
+      );
+      return;
     }
 
     setLoading(true);
@@ -342,6 +394,38 @@ export default function NewSalesOrderPage() {
 
       if (linesError) throw linesError;
 
+      // Asynchronously log audit event for sales order creation
+      void logAuditEvent(
+        'sales_order',
+        orderData.id,
+        'create',
+        null,
+        {
+          order_number: finalOrderNumber,
+          customer_id: formData.customer_id,
+          customer_name: selectedCustomer?.company_name,
+          grand_total: grandTotal,
+          is_gst: isGstOrder,
+          line_count: linesToInsert.length,
+          credit_override: isExceeded && managerOverride,
+        }
+      );
+
+      if (isExceeded && managerOverride && selectedCustomer) {
+        void logAuditEvent(
+          'customer',
+          selectedCustomer.id,
+          'credit_override',
+          null,
+          {
+            sales_order_id: orderData.id,
+            order_number: finalOrderNumber,
+            credit_limit: creditLimit,
+            projected_outstanding: totalProjectedDue,
+          }
+        );
+      }
+
       router.push('/sales-orders');
     } catch (err: any) {
       setError(err.message || 'Failed to create sales order');
@@ -362,6 +446,16 @@ export default function NewSalesOrderPage() {
       </PageContainer>
     );
   }
+
+  // Reactive credit health metrics for current draft order
+  const liveCreditLimit = selectedCustomer?.credit_limit ? Number(selectedCustomer.credit_limit) : 0;
+  const liveCurrentDue = customerOutstanding ?? 0;
+  const liveOrderTotal = calculateGrandTotal();
+  const liveProjectedDue = liveCurrentDue + liveOrderTotal;
+  const liveUtilizationPct = liveCreditLimit > 0 ? (liveProjectedDue / liveCreditLimit) * 100 : 0;
+  const isCreditExceeded = liveCreditLimit > 0 && liveProjectedDue > liveCreditLimit;
+  const isCreditWarning = liveCreditLimit > 0 && liveUtilizationPct >= 80 && !isCreditExceeded;
+  const remainingHeadroomAfterOrder = liveCreditLimit > 0 ? liveCreditLimit - liveProjectedDue : null;
 
   return (
     <PageContainer>
@@ -745,9 +839,183 @@ export default function NewSalesOrderPage() {
               </CardContent>
             </Card>
 
+            {/* Customer Credit Health & Exposure Card */}
+            {selectedCustomer && (
+              <Card
+                className={cn(
+                  'border transition-colors',
+                  isCreditExceeded
+                    ? 'border-destructive/40 bg-destructive/5 dark:bg-destructive/10'
+                    : isCreditWarning
+                    ? 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/15'
+                    : 'border-border bg-card'
+                )}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <Icons.shieldCheck
+                        className={cn(
+                          'w-4 h-4',
+                          isCreditExceeded
+                            ? 'text-destructive'
+                            : isCreditWarning
+                            ? 'text-amber-500'
+                            : 'text-emerald-500'
+                        )}
+                      />
+                      Credit Health & Exposure
+                    </CardTitle>
+                    {liveCreditLimit > 0 ? (
+                      <Badge
+                        variant={isCreditExceeded ? 'destructive' : isCreditWarning ? 'warning' : 'outline'}
+                        className="text-[10px] px-1.5 py-0 h-4 font-mono"
+                      >
+                        {isCreditExceeded
+                          ? 'Exceeded'
+                          : isCreditWarning
+                          ? 'High Exposure'
+                          : 'Within Limit'}
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                        No Credit Cap
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  {/* Utilization Progress Bar */}
+                  {liveCreditLimit > 0 ? (
+                    <div>
+                      <div className="flex justify-between items-center text-[11px] mb-1.5">
+                        <span className="text-muted-foreground">Credit Utilization</span>
+                        <span
+                          className={cn(
+                            'font-mono font-semibold',
+                            isCreditExceeded
+                              ? 'text-destructive'
+                              : isCreditWarning
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          )}
+                        >
+                          {liveUtilizationPct.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-muted overflow-hidden relative">
+                        <div
+                          className={cn(
+                            'h-full rounded-full transition-all duration-300',
+                            isCreditExceeded
+                              ? 'bg-destructive'
+                              : isCreditWarning
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                          )}
+                          style={{ width: `${Math.min(100, liveUtilizationPct)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      This customer currently has no fixed credit limit assigned.
+                    </p>
+                  )}
+
+                  {/* Metrics Ledger Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                    <div className="p-2 rounded-lg bg-background border border-border/50">
+                      <span className="text-muted-foreground block text-[10px]">Current Outstanding</span>
+                      <span className="font-mono font-semibold text-foreground">
+                        ₹{Math.round(liveCurrentDue).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background border border-border/50">
+                      <span className="text-muted-foreground block text-[10px]">Credit Limit</span>
+                      <span className="font-mono font-semibold text-foreground">
+                        {liveCreditLimit > 0 ? `₹${liveCreditLimit.toLocaleString('en-IN')}` : '∞ Unrestricted'}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background border border-border/50">
+                      <span className="text-muted-foreground block text-[10px]">Order Value</span>
+                      <span className="font-mono font-semibold text-primary">
+                        +₹{Math.round(liveOrderTotal).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-background border border-border/50">
+                      <span className="text-muted-foreground block text-[10px]">Projected Balance</span>
+                      <span
+                        className={cn(
+                          'font-mono font-semibold',
+                          isCreditExceeded ? 'text-destructive' : 'text-foreground'
+                        )}
+                      >
+                        ₹{Math.round(liveProjectedDue).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {liveCreditLimit > 0 && remainingHeadroomAfterOrder !== null && (
+                    <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground">
+                        {remainingHeadroomAfterOrder >= 0 ? 'Remaining Credit Headroom:' : 'Excess Over Limit:'}
+                      </span>
+                      <span
+                        className={cn(
+                          'font-mono font-bold',
+                          remainingHeadroomAfterOrder < 0
+                            ? 'text-destructive'
+                            : 'text-emerald-600 dark:text-emerald-400'
+                        )}
+                      >
+                        {remainingHeadroomAfterOrder < 0 ? '-' : ''}₹
+                        {Math.abs(Math.round(remainingHeadroomAfterOrder)).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Manager Override Checkbox if Exceeded */}
+                  {isCreditExceeded && (
+                    <div className="p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <Icons.shieldAlert className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                        <div className="text-[11px] text-destructive leading-tight">
+                          <span className="font-semibold block">Credit Limit Exceeded!</span>
+                          This order will push the customer past their approved limit. Manager approval is mandatory to proceed.
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer pt-1 border-t border-destructive/20 text-xs text-foreground select-none">
+                        <input
+                          type="checkbox"
+                          checked={managerOverride}
+                          onChange={e => setManagerOverride(e.target.checked)}
+                          className="w-4 h-4 rounded border-destructive text-primary focus:ring-destructive"
+                        />
+                        <span className="font-medium text-[11px]">
+                          Manager Override: Authorize order dispatch
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Form Submission Actions */}
             <div className="flex flex-col gap-2.5">
-              <Button type="submit" disabled={loading} className="w-full h-10 font-semibold shadow-xs">
+              {isCreditExceeded && !managerOverride && (
+                <div className="p-2 rounded-lg bg-destructive/10 border border-destructive/20 text-center">
+                  <p className="text-[11px] font-medium text-destructive">
+                    Credit limit exceeded. Manager override authorization required to create order.
+                  </p>
+                </div>
+              )}
+              <Button
+                type="submit"
+                disabled={loading || (isCreditExceeded && !managerOverride)}
+                className="w-full h-10 font-semibold shadow-xs"
+              >
                 {loading ? (
                   <>
                     <Icons.refresh className="w-4 h-4 mr-2 animate-spin" />

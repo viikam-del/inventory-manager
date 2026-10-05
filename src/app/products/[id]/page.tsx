@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageContainer, PageHeader } from '@/components/layout/page-wrapper';
+import { Timeline } from '@/components/ui/timeline';
+import { getAuditLogsForEntity, logAuditEvent, AuditLog } from '@/lib/audit';
 
 interface Product {
   id: string;
@@ -49,6 +51,7 @@ export default function ProductDetailPage() {
   const [ledgerLoading, setLedgerLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   async function fetchProductLedger(productId: string) {
     setLedgerLoading(true);
@@ -263,7 +266,12 @@ export default function ProductDetailPage() {
 
       if (supabaseError) throw supabaseError;
       setProduct(data);
-      if (data) fetchProductLedger(data.id);
+      if (data) {
+        fetchProductLedger(data.id);
+        getAuditLogsForEntity('product', data.id)
+          .then(setAuditLogs)
+          .catch((err) => console.error('Failed to load audit logs:', err));
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load product details');
     } finally {
@@ -286,6 +294,10 @@ export default function ProductDetailPage() {
         .eq('id', params.id);
 
       if (supabaseError) throw supabaseError;
+      void logAuditEvent('product', params.id as string, 'delete', null, {
+        product_name: product?.name,
+        sku_code: product?.sku_code,
+      });
       router.push('/products');
     } catch (err: any) {
       alert(err.message || 'Failed to delete product');
@@ -506,6 +518,15 @@ export default function ProductDetailPage() {
             </div>
           </Card>
         )}
+      </div>
+
+      {/* Activity & Stock Mutation Audit Timeline */}
+      <div className="pt-2">
+        <Timeline
+          logs={auditLogs}
+          title="Product Stock & Mutation Audit Trail"
+          emptyMessage="No audit trail events recorded yet for this product."
+        />
       </div>
 
     </PageContainer>

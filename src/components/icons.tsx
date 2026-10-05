@@ -47,7 +47,17 @@ import {
   Command,
   HelpCircle,
   FolderTree,
-  Scale
+  Scale,
+  History,
+  Calendar,
+  ShieldAlert,
+  ShieldCheck,
+  FileSpreadsheet,
+  Download,
+  ExternalLink,
+  Activity,
+  DollarSign,
+  Layers
 } from 'lucide-react';
 
 export const Icons = {
@@ -113,4 +123,16 @@ export const Icons = {
   categories: FolderTree,
   stockAdjustments: Scale,
   scale: Scale,
+  history: History,
+  timeline: History,
+  calendar: Calendar,
+  aging: Calendar,
+  shieldAlert: ShieldAlert,
+  shieldCheck: ShieldCheck,
+  spreadsheet: FileSpreadsheet,
+  download: Download,
+  external: ExternalLink,
+  activity: Activity,
+  dollar: DollarSign,
+  layers: Layers,
 };

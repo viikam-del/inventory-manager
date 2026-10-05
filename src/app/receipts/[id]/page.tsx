@@ -15,6 +15,8 @@ interface ReceiptLine {
   product_id: string;
   quantity_received: number;
   unit_cost: number;
+  billed_rate?: number;
+  cash_rate?: number;
   gst_amount: number;
   total_amount: number;
   is_billed?: boolean;
@@ -57,9 +59,17 @@ export default function ReceiptDetailPage() {
     if (!confirm('Permanently delete this Goods Receipt (GRN)? This will move it to the archive.')) return;
     setActionLoading(true);
     try {
+      const archivedNumber = receipt?.receipt_number && !receipt.receipt_number.includes('-DEL-')
+        ? `${receipt.receipt_number}-DEL-${(params.id as string).slice(0, 8)}`
+        : receipt?.receipt_number;
+
       const { error: deleteError } = await supabase
         .from('receipts')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .update({
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { receipt_number: archivedNumber } : {})
+        })
         .eq('id', params.id);
 
       if (deleteError) throw deleteError;
@@ -133,10 +143,17 @@ export default function ReceiptDetailPage() {
     );
   }
 
-  const subtotal = lines.reduce((acc, l) => acc + (l.quantity_received * l.unit_cost), 0);
-  const billedSubtotal = lines.reduce((acc, l) => acc + (l.is_billed !== false ? (l.quantity_received * l.unit_cost) : 0), 0);
-  const cashSubtotal = lines.reduce((acc, l) => acc + (l.is_billed === false ? (l.quantity_received * l.unit_cost) : 0), 0);
+  const billedSubtotal = lines.reduce((acc, l) => {
+    const bRate = Number(l.billed_rate) || (l.is_billed !== false && l.cash_rate === undefined ? Number(l.unit_cost) || 0 : 0);
+    return acc + (l.quantity_received * bRate);
+  }, 0);
+  const cashSubtotal = lines.reduce((acc, l) => {
+    const cRate = Number(l.cash_rate) || (l.is_billed === false && l.billed_rate === undefined ? Number(l.unit_cost) || 0 : 0);
+    return acc + (l.quantity_received * cRate);
+  }, 0);
+  const subtotal = billedSubtotal + cashSubtotal;
   const totalGst = lines.reduce((acc, l) => acc + (l.gst_amount || 0), 0);
+  const billedTaxInvoice = billedSubtotal + totalGst;
   const grandTotal = subtotal + totalGst + Number(receipt.delivery_charges || 0);
 
   const whatsappMessage = encodeURIComponent(
@@ -272,37 +289,59 @@ export default function ReceiptDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              {lines.map((l) => (
-                <tr key={l.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-foreground">
-                    {l.products?.name || 'Unknown Product'}
-                  </td>
-                  <td className="px-5 py-3.5 text-muted-foreground font-mono text-xs">
-                    {l.products?.sku_code || '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                    +{l.quantity_received} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
-                    ₹{Number(l.unit_cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-5 py-3.5 text-center">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
-                      l.is_billed !== false
-                        ? 'bg-primary/10 text-primary border border-primary/20'
-                        : 'bg-orange-500/10 text-orange-600 border border-orange-500/20'
-                    }`}>
-                      {l.is_billed !== false ? 'Billed' : 'Cash'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
-                    ₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
-                    ₹{(Number(l.quantity_received * l.unit_cost) + Number(l.gst_amount || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
+              {lines.map((l) => {
+                const bRate = Number(l.billed_rate) || (l.is_billed !== false && l.cash_rate === undefined ? Number(l.unit_cost) || 0 : 0);
+                const cRate = Number(l.cash_rate) || (l.is_billed === false && l.billed_rate === undefined ? Number(l.unit_cost) || 0 : 0);
+                const isSplit = bRate > 0 && cRate > 0;
+                const totalUnitCost = bRate + cRate > 0 ? bRate + cRate : Number(l.unit_cost) || 0;
+                const lineTotal = (l.quantity_received * totalUnitCost) + Number(l.gst_amount || 0);
+
+                return (
+                  <tr key={l.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-foreground">
+                      {l.products?.name || 'Unknown Product'}
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground font-mono text-xs">
+                      {l.products?.sku_code || '—'}
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      +{l.quantity_received} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono text-foreground">
+                      <div>₹{totalUnitCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                      {isSplit ? (
+                        <div className="text-[10px] text-muted-foreground font-sans mt-0.5">
+                          <span className="text-primary font-medium">B: ₹{bRate.toLocaleString('en-IN')}</span> + <span className="text-orange-600 dark:text-orange-400 font-medium">C: ₹{cRate.toLocaleString('en-IN')}</span>
+                        </div>
+                      ) : bRate > 0 ? (
+                        <div className="text-[10px] text-primary font-sans mt-0.5">100% Tax Billed</div>
+                      ) : (
+                        <div className="text-[10px] text-orange-600 dark:text-orange-400 font-sans mt-0.5">100% Cash Settlement</div>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${
+                        isSplit
+                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+                          : bRate > 0
+                          ? 'bg-primary/10 text-primary border border-primary/20'
+                          : 'bg-orange-500/10 text-orange-600 border border-orange-500/20'
+                      }`}>
+                        {isSplit ? 'Split (Bill + Cash)' : bRate > 0 ? 'Billed (100%)' : 'Cash (100%)'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono text-muted-foreground">
+                      <div>₹{Number(l.gst_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                      {isSplit && (
+                        <div className="text-[10px] text-muted-foreground/70 font-sans">on billed amt</div>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono font-bold text-foreground">
+                      ₹{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -310,7 +349,7 @@ export default function ReceiptDetailPage() {
         {/* Totals Summary */}
         <div className="p-4 sm:p-6 bg-muted/20 border-t border-border/60 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-            <span>Billed Subtotal:</span>
+            <span>Billed Subtotal (Taxable):</span>
             <span className="font-mono font-medium text-foreground">₹{billedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
@@ -320,6 +359,10 @@ export default function ReceiptDetailPage() {
           <div className="flex justify-between w-full max-w-xs text-muted-foreground">
             <span>Total Input GST (ITC):</span>
             <span className="font-mono font-medium text-foreground">₹{totalGst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          </div>
+          <div className="flex justify-between w-full max-w-xs text-muted-foreground pt-1 border-t border-dashed border-border/60">
+            <span>Billed Tax Invoice Total:</span>
+            <span className="font-mono font-semibold text-primary">₹{billedTaxInvoice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
           </div>
           {Number(receipt.delivery_charges) > 0 && (
             <div className="flex justify-between w-full max-w-xs text-muted-foreground">

@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { logAuditEvent } from '@/lib/audit';
 import Link from 'next/link';
 import { Icons } from '@/components/icons';
 import { Button } from '@/components/ui/button';
@@ -345,6 +346,22 @@ function NewStockAdjustmentForm() {
           .eq('id', line.product_id);
 
         if (prodUpdateErr) throw prodUpdateErr;
+
+        // 3. Asynchronously record audit log
+        void logAuditEvent(
+          'product',
+          line.product_id,
+          'adjust_stock',
+          { current_stock: { old: calc.currentStock, new: calc.newStock } },
+          {
+            quantity: calc.adjustedQty,
+            variance: calc.variance,
+            adjustment_type: calc.adjustmentType,
+            mode: mode,
+            reason: reasonNote,
+            reference_type: line.reference_type || (mode === 'count' ? 'Physical Count' : 'Manual'),
+          }
+        );
       }
 
       // Success redirect

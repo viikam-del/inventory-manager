@@ -108,11 +108,16 @@ export default function SupplierReturnDetailPage() {
     if (!confirm('Move this Supplier Return to archive? This will soft-delete the record.')) return;
     setActionLoading(true);
     try {
+      const archivedNumber = returnRecord?.return_number && !returnRecord.return_number.includes('-DEL-')
+        ? `${returnRecord.return_number}-DEL-${(params.id as string).slice(0, 8)}`
+        : returnRecord?.return_number;
+
       const { error: deleteError } = await supabase
         .from('supplier_returns')
         .update({
           is_deleted: true,
           deleted_at: new Date().toISOString(),
+          ...(archivedNumber ? { return_number: archivedNumber } : {})
         })
         .eq('id', params.id);
 

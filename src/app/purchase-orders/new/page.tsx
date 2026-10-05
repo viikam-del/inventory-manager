@@ -30,6 +30,9 @@ interface POLineItem {
   product_id: string;
   quantity: number;
   unit_cost: number;
+  billed_rate: number;
+  cash_rate: number;
+  billing_mode: 'billed' | 'cash' | 'split';
   gst_rate: number;
   gst_amount: number;
   is_billed: boolean;
@@ -53,7 +56,7 @@ export default function NewPurchaseOrderPage() {
   });
 
   const [lines, setLines] = useState<POLineItem[]>([
-    { product_id: '', quantity: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0, is_billed: true }
+    { product_id: '', quantity: 1, unit_cost: 0, billed_rate: 0, cash_rate: 0, billing_mode: 'billed', gst_rate: 18, gst_amount: 0, is_billed: true }
   ]);
 
   useEffect(() => {
@@ -62,7 +65,7 @@ export default function NewPurchaseOrderPage() {
         const [suppliersRes, productsRes, lastPORes] = await Promise.all([
           supabase.from('suppliers').select('id, company_name, default_credit_days').eq('is_deleted', false).order('company_name'),
           supabase.from('products').select('id, name, sku_code, unit, gst_rate, price_gst, price_non_gst').eq('is_deleted', false).order('name'),
-          supabase.from('purchase_orders').select('po_number').not('po_number', 'is', null).order('po_number', { ascending: false }).limit(1)
+          supabase.from('purchase_orders').select('po_number').eq('is_deleted', false).not('po_number', 'is', null)
         ]);
 
         if (suppliersRes.error) throw suppliersRes.error;
@@ -71,19 +74,23 @@ export default function NewPurchaseOrderPage() {
         setSuppliers(suppliersRes.data || []);
         setProducts(productsRes.data || []);
 
-        // Generate sequential PO number
-        if (lastPORes.data && lastPORes.data.length > 0 && lastPORes.data[0].po_number) {
-          const lastPO = lastPORes.data[0].po_number;
-          const match = lastPO.match(/PO-(\d+)/);
-          if (match && match[1]) {
-            const nextNum = parseInt(match[1], 10) + 1;
-            setFormData(prev => ({ ...prev, po_number: `PO-${String(nextNum).padStart(4, '0')}` }));
-          } else {
-            setFormData(prev => ({ ...prev, po_number: `PO-${Date.now().toString().slice(-4)}` }));
+        // Generate sequential PO number based on maximum active PO number
+        let maxNum = 0;
+        if (lastPORes.data && lastPORes.data.length > 0) {
+          for (const row of lastPORes.data) {
+            if (row.po_number && !row.po_number.includes('-DEL-')) {
+              const match = row.po_number.match(/PO-(\d+)/i);
+              if (match && match[1]) {
+                const val = parseInt(match[1], 10);
+                if (!isNaN(val) && val > maxNum) {
+                  maxNum = val;
+                }
+              }
+            }
           }
-        } else {
-          setFormData(prev => ({ ...prev, po_number: `PO-0001` }));
         }
+        const nextNum = maxNum + 1;
+        setFormData(prev => ({ ...prev, po_number: `PO-${String(nextNum).padStart(4, '0')}` }));
       } catch (err: any) {
         setError(err.message || 'Failed to load suppliers or products');
       } finally {
@@ -101,14 +108,40 @@ export default function NewPurchaseOrderPage() {
       const unitCost = Number(selectedProd.price_non_gst) || 0;
       const gstRate = Number(selectedProd.gst_rate) || 18;
       const qty = updated[index].quantity || 1;
-      const gstAmt = (qty * unitCost * gstRate) / 100;
+      const mode = updated[index].billing_mode || 'billed';
+
+      let billedRate = 0;
+      let cashRate = 0;
+      let isBilled = true;
+
+      if (mode === 'billed') {
+        billedRate = unitCost;
+        cashRate = 0;
+        isBilled = true;
+      } else if (mode === 'cash') {
+        billedRate = 0;
+        cashRate = unitCost;
+        isBilled = false;
+      } else {
+        // split mode: keep existing split or default 50/50
+        billedRate = Number((unitCost / 2).toFixed(2));
+        cashRate = Number((unitCost - billedRate).toFixed(2));
+        isBilled = true;
+      }
+
+      const effectiveUnitCost = billedRate + cashRate;
+      const gstAmt = isBilled && billedRate > 0 ? (qty * billedRate * gstRate) / 100 : 0;
+
       updated[index] = {
         product_id: productId,
         quantity: qty,
-        unit_cost: unitCost,
+        unit_cost: effectiveUnitCost,
+        billed_rate: billedRate,
+        cash_rate: cashRate,
+        billing_mode: mode,
         gst_rate: gstRate,
         gst_amount: Number(gstAmt.toFixed(2)),
-        is_billed: true
+        is_billed: isBilled
       };
     } else {
       updated[index].product_id = '';
@@ -118,26 +151,50 @@ export default function NewPurchaseOrderPage() {
 
   const handleLineChange = (index: number, field: keyof POLineItem, value: any) => {
     const updated = [...lines];
-    updated[index] = {
-      ...updated[index],
-      [field]: value
-    };
+    const current = { ...updated[index], [field]: value };
 
-    if (field === 'quantity' || field === 'unit_cost' || field === 'gst_rate' || field === 'is_billed') {
-      const qty = field === 'quantity' ? value : updated[index].quantity;
-      const cost = field === 'unit_cost' ? value : updated[index].unit_cost;
-      const rate = field === 'gst_rate' ? value : updated[index].gst_rate;
-      const billed = field === 'is_billed' ? value : updated[index].is_billed;
+    if (field === 'billing_mode') {
+      const mode = value as 'billed' | 'cash' | 'split';
+      const totalCost = current.unit_cost || (current.billed_rate + current.cash_rate) || 0;
 
-      const calcRate = billed ? rate : 0;
-      updated[index].gst_amount = Number(((qty * cost * calcRate) / 100).toFixed(2));
+      if (mode === 'billed') {
+        current.billed_rate = totalCost > 0 ? totalCost : current.billed_rate;
+        current.cash_rate = 0;
+        current.is_billed = true;
+      } else if (mode === 'cash') {
+        current.cash_rate = totalCost > 0 ? totalCost : current.cash_rate;
+        current.billed_rate = 0;
+        current.is_billed = false;
+      } else if (mode === 'split') {
+        current.is_billed = true;
+        if (current.billed_rate === 0 && current.cash_rate === 0 && totalCost > 0) {
+          current.billed_rate = Number((totalCost / 2).toFixed(2));
+          current.cash_rate = Number((totalCost - current.billed_rate).toFixed(2));
+        }
+      }
+      current.billing_mode = mode;
     }
 
+    const qty = Number(current.quantity) || 0;
+    const billedRate = Number(current.billed_rate) || 0;
+    const cashRate = Number(current.cash_rate) || 0;
+    const gstRate = Number(current.gst_rate) || 0;
+
+    current.unit_cost = billedRate + cashRate;
+    current.is_billed = billedRate > 0 || current.billing_mode !== 'cash';
+
+    if (current.is_billed && billedRate > 0) {
+      current.gst_amount = Number(((qty * billedRate * gstRate) / 100).toFixed(2));
+    } else {
+      current.gst_amount = 0;
+    }
+
+    updated[index] = current;
     setLines(updated);
   };
 
   const addLine = () => {
-    setLines(prev => [...prev, { product_id: '', quantity: 1, unit_cost: 0, gst_rate: 18, gst_amount: 0, is_billed: true }]);
+    setLines(prev => [...prev, { product_id: '', quantity: 1, unit_cost: 0, billed_rate: 0, cash_rate: 0, billing_mode: 'billed', gst_rate: 18, gst_amount: 0, is_billed: true }]);
   };
 
   const removeLine = (index: number) => {
@@ -146,19 +203,23 @@ export default function NewPurchaseOrderPage() {
   };
 
   const calculateSubtotal = () => {
-    return lines.reduce((acc, l) => acc + (l.quantity * l.unit_cost), 0);
+    return lines.reduce((acc, l) => acc + (l.quantity * (l.billed_rate + l.cash_rate)), 0);
   };
 
   const calculateBilledSubtotal = () => {
-    return lines.reduce((acc, l) => acc + (l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
+    return lines.reduce((acc, l) => acc + (l.quantity * (Number(l.billed_rate) || 0)), 0);
   };
 
   const calculateCashSubtotal = () => {
-    return lines.reduce((acc, l) => acc + (!l.is_billed ? (l.quantity * l.unit_cost) : 0), 0);
+    return lines.reduce((acc, l) => acc + (l.quantity * (Number(l.cash_rate) || 0)), 0);
   };
 
   const calculateTotalGST = () => {
     return lines.reduce((acc, l) => acc + (l.gst_amount || 0), 0);
+  };
+
+  const calculateTotalBilledInvoice = () => {
+    return calculateBilledSubtotal() + calculateTotalGST();
   };
 
   const calculateGrandTotal = () => {
@@ -200,14 +261,16 @@ export default function NewPurchaseOrderPage() {
 
       if (poError) throw poError;
 
-      // 2. Insert PO Lines
+      // 2. Insert PO Lines with decoupled physical vs commercial split valuation
       const linesToInsert = validLines.map(line => ({
         purchase_order_id: poData.id,
         product_id: line.product_id,
         quantity: line.quantity,
-        unit_cost: line.unit_cost,
-        gst_amount: line.gst_amount,
-        is_billed: line.is_billed
+        unit_cost: (Number(line.billed_rate) || 0) + (Number(line.cash_rate) || 0),
+        billed_rate: Number(line.billed_rate) || 0,
+        cash_rate: Number(line.cash_rate) || 0,
+        gst_amount: line.gst_amount || 0,
+        is_billed: (Number(line.billed_rate) || 0) > 0
       }));
 
       const { error: linesError } = await supabase
@@ -363,14 +426,15 @@ export default function NewPurchaseOrderPage() {
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-muted/50 border-y sm:border-y-0 sm:border-b border-border/60 text-muted-foreground font-medium text-[11px] uppercase tracking-wider">
                   <tr>
-                    <th className="px-4 py-2.5 min-w-[220px]">Product</th>
-                    <th className="px-3 py-2.5 w-24">Qty</th>
-                    <th className="px-3 py-2.5 w-32">Unit Cost (₹)</th>
-                    <th className="px-3 py-2.5 w-28 text-center">Billing Mode</th>
-                    <th className="px-3 py-2.5 w-24">GST %</th>
-                    <th className="px-3 py-2.5 w-28 text-right">GST (₹)</th>
-                    <th className="px-4 py-2.5 w-32 text-right">Line Total</th>
-                    <th className="px-2 py-2.5 w-10"></th>
+                    <th className="px-4 py-2.5 min-w-[200px]">Product</th>
+                    <th className="px-2 py-2.5 w-20">Qty</th>
+                    <th className="px-2 py-2.5 w-36 text-center">Billing Mode</th>
+                    <th className="px-2 py-2.5 w-48 text-center">Rate Breakdown (₹)</th>
+                    <th className="px-2 py-2.5 w-24 text-right">Total Rate</th>
+                    <th className="px-2 py-2.5 w-20 text-center">GST %</th>
+                    <th className="px-2 py-2.5 w-24 text-right">GST (₹)</th>
+                    <th className="px-3 py-2.5 w-28 text-right">Line Total</th>
+                    <th className="px-2 py-2.5 w-8"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
@@ -393,7 +457,7 @@ export default function NewPurchaseOrderPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-2 py-3">
                           <input
                             type="number"
                             min="0.01"
@@ -401,48 +465,105 @@ export default function NewPurchaseOrderPage() {
                             value={line.quantity}
                             onChange={e => handleLineChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
                             required
-                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </td>
-                        <td className="px-3 py-3">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={line.unit_cost}
-                            onChange={e => handleLineChange(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                            required
-                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleLineChange(idx, 'is_billed', !line.is_billed)}
-                            className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-colors ${
-                              line.is_billed
-                                ? 'bg-primary/15 text-primary border border-primary/30'
-                                : 'bg-orange-500/15 text-orange-600 border border-orange-500/30'
+                        <td className="px-2 py-3 text-center">
+                          <select
+                            value={line.billing_mode}
+                            onChange={e => handleLineChange(idx, 'billing_mode', e.target.value)}
+                            className={`w-full px-2 py-1.5 rounded-md border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-ring ${
+                              line.billing_mode === 'split'
+                                ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30'
+                                : line.billing_mode === 'cash'
+                                ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30'
+                                : 'bg-primary/10 text-primary border-primary/30'
                             }`}
                           >
-                            {line.is_billed ? 'Billed' : 'Cash'}
-                          </button>
+                            <option value="billed">Billed (100%)</option>
+                            <option value="cash">Cash (100%)</option>
+                            <option value="split">Split (Bill & Cash)</option>
+                          </select>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-2 py-3">
+                          {line.billing_mode === 'split' ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex-1">
+                                <div className="text-[10px] text-primary font-medium mb-0.5">Bill Rate</div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.billed_rate}
+                                  onChange={e => handleLineChange(idx, 'billed_rate', parseFloat(e.target.value) || 0)}
+                                  placeholder="Bill"
+                                  className="w-full px-2 py-1 rounded border border-primary/30 bg-primary/5 text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <div className="text-[10px] text-orange-600 dark:text-orange-400 font-medium mb-0.5">Cash Rate</div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={line.cash_rate}
+                                  onChange={e => handleLineChange(idx, 'cash_rate', parseFloat(e.target.value) || 0)}
+                                  placeholder="Cash"
+                                  className="w-full px-2 py-1 rounded border border-orange-500/30 bg-orange-500/5 text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                />
+                              </div>
+                            </div>
+                          ) : line.billing_mode === 'cash' ? (
+                            <div>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={line.cash_rate}
+                                onChange={e => handleLineChange(idx, 'cash_rate', parseFloat(e.target.value) || 0)}
+                                placeholder="Cash Rate"
+                                className="w-full px-2 py-1.5 rounded-md border border-orange-500/30 bg-orange-500/5 text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-orange-500"
+                              />
+                              <div className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5">Unbilled cash only</div>
+                            </div>
+                          ) : (
+                            <div>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={line.billed_rate}
+                                onChange={e => handleLineChange(idx, 'billed_rate', parseFloat(e.target.value) || 0)}
+                                placeholder="Billed Rate"
+                                className="w-full px-2 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-foreground text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                              />
+                              <div className="text-[10px] text-primary mt-0.5">100% Tax invoice</div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-2 py-3 text-right">
+                          <span className="font-mono text-xs font-semibold text-foreground">
+                            ₹{line.unit_cost.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-3">
                           <input
                             type="number"
                             min="0"
                             step="1"
                             value={line.gst_rate}
                             onChange={e => handleLineChange(idx, 'gst_rate', parseFloat(e.target.value) || 0)}
-                            disabled={!line.is_billed}
-                            className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                            disabled={line.billing_mode === 'cash' || line.billed_rate === 0}
+                            className="w-full px-2 py-1.5 rounded-md border border-input bg-background text-foreground text-xs text-center focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40"
                           />
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs text-muted-foreground">
-                          ₹{line.gst_amount.toFixed(2)}
+                        <td className="px-2 py-3 text-right font-mono text-xs text-muted-foreground">
+                          <div>₹{line.gst_amount.toFixed(2)}</div>
+                          {line.billing_mode === 'split' && (
+                            <div className="text-[10px] text-muted-foreground/70">on bill amt</div>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono font-semibold text-foreground">
+                        <td className="px-3 py-3 text-right font-mono font-semibold text-foreground">
                           ₹{lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-2 py-3 text-center">
@@ -464,25 +585,35 @@ export default function NewPurchaseOrderPage() {
 
             {/* Financial Summary */}
             <div className="border-t border-border/60 p-4 sm:p-6 bg-muted/20 flex flex-col items-end space-y-1.5 text-xs sm:text-sm">
-              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-                <span>Billed Subtotal:</span>
+              <div className="flex justify-between w-full max-w-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-primary inline-block"></span>
+                  Billed Subtotal (Taxable Value):
+                </span>
                 <span className="font-mono font-medium text-foreground">₹{calculateBilledSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-                <span>Cash Subtotal (Non-GST):</span>
+              <div className="flex justify-between w-full max-w-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+                  Cash Subtotal (Non-GST Base):
+                </span>
                 <span className="font-mono font-medium text-foreground">₹{calculateCashSubtotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
-              <div className="flex justify-between w-full max-w-xs text-muted-foreground">
-                <span>Total GST:</span>
+              <div className="flex justify-between w-full max-w-sm text-muted-foreground">
+                <span>Total Input GST (ITC):</span>
                 <span className="font-mono font-medium text-foreground">₹{calculateTotalGST().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
+              <div className="flex justify-between w-full max-w-sm pt-1 border-t border-border/40 text-muted-foreground text-xs">
+                <span>Total Billed Tax Invoice Value:</span>
+                <span className="font-mono font-semibold text-primary">₹{calculateTotalBilledInvoice().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
               {formData.delivery_charges > 0 && (
-                <div className="flex justify-between w-full max-w-xs text-muted-foreground">
+                <div className="flex justify-between w-full max-w-sm text-muted-foreground">
                   <span>Freight / Delivery:</span>
                   <span className="font-mono font-medium text-foreground">₹{Number(formData.delivery_charges).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
-              <div className="flex justify-between w-full max-w-xs pt-2 border-t border-border text-base font-bold text-foreground">
+              <div className="flex justify-between w-full max-w-sm pt-2 border-t border-border text-base font-bold text-foreground">
                 <span>Grand Total:</span>
                 <span className="font-mono text-primary">₹{calculateGrandTotal().toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
