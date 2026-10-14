@@ -392,6 +392,14 @@ export default function SalesOrderDetailPage() {
               <Icons.print className="w-3.5 h-3.5 mr-1.5" /> Print / PDF
             </Button>
 
+            {order.status !== 'Invoiced' && order.status !== 'Cancelled' && (
+              <Button variant="outline" size="sm" asChild className="h-8 text-xs">
+                <Link href={`/sales-orders/${params.id}/edit`}>
+                  <Icons.edit className="w-3.5 h-3.5 mr-1.5" /> Edit Order
+                </Link>
+              </Button>
+            )}
+
             <Button
               variant="outline"
               size="sm"
