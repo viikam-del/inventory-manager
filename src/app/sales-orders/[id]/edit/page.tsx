@@ -88,7 +88,7 @@ export default function EditSalesOrderPage() {
         const { data: prodData, error: prodErr } = await supabase
           .from('products')
           .select('id, name, sku_code, unit, price_gst, price_non_gst, gst_rate, current_stock')
-          .eq('is_active', true)
+          .eq('is_deleted', false)
           .order('name');
         if (prodErr) throw prodErr;
         setProducts(prodData || []);
