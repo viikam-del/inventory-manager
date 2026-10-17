@@ -18,7 +18,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       <Button
         variant="ghost"
         size="icon"
-        className={`h-9 w-9 text-muted-foreground ${className || ''}`}
+        className={`h-10 w-10 text-muted-foreground ${className || ''}`}
         aria-label="Toggle theme"
       >
         <Icons.sun className="h-4 w-4 opacity-50" />
@@ -33,7 +33,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       variant="ghost"
       size="icon"
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className={`h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors relative ${className || ''}`}
+      className={`h-10 w-10 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors relative ${className || ''}`}
       aria-label="Toggle theme"
       title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
     >

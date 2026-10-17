@@ -686,7 +686,7 @@ export default function CustomerAgingReportPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                            className="h-10 w-10 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
                             title="Send WhatsApp Payment Notice"
                             onClick={() => sendWhatsAppReminder(row)}
                           >

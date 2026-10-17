@@ -736,7 +736,7 @@ export default function EditSalesOrderPage() {
                         size="icon"
                         onClick={() => removeLine(idx)}
                         disabled={lines.length === 1}
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       >
                         <Icons.trash className="w-4 h-4" />
                       </Button>
