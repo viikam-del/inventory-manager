@@ -58,7 +58,7 @@ export default function CustomersPage() {
         if (c.sales_orders) {
           totalSales = c.sales_orders
             .filter((o: any) => !o.is_deleted)
-            .reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0) + (Number(o.gst_amount) || 0), 0);
+            .reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0), 0);
         }
 
         if (c.payments) {

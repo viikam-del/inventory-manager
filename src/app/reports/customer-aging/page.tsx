@@ -134,7 +134,7 @@ export default function CustomerAgingReportPage() {
         const defaultDueDays = cust.default_due_days && cust.default_due_days > 0 ? cust.default_due_days : 7;
 
         for (const order of custOrders) {
-          const invTotal = Number(order.total_amount || 0) + Number(order.gst_amount || 0);
+          const invTotal = Number(order.total_amount || 0);
           if (paymentsRemaining >= invTotal) {
             paymentsRemaining -= invTotal;
           } else {

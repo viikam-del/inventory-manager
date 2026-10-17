@@ -320,7 +320,7 @@ export default function NewSalesOrderPage() {
     // 2. Credit Limit Validation via Manager Override
     const creditLimit = selectedCustomer?.credit_limit ? Number(selectedCustomer.credit_limit) : 0;
     const currentDue = customerOutstanding ?? 0;
-    const newOrderAddedValue = grandTotal + (isGstOrder ? gstAmount : 0);
+    const newOrderAddedValue = grandTotal;
     const totalProjectedDue = currentDue + newOrderAddedValue;
     const isExceeded = creditLimit > 0 && totalProjectedDue > creditLimit;
 

@@ -96,7 +96,7 @@ export default function CustomerDetailPage() {
         reference: s.order_number || s.so_number || 'SO',
         link: `/sales-orders/${s.id}`,
         status: s.status,
-        amount: (Number(s.total_amount) + Number(s.gst_amount || 0)),
+        amount: Number(s.total_amount || 0),
         isDebit: true // Owe us more
       }));
 
