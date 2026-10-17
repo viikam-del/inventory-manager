@@ -61,7 +61,7 @@ export default function StaffDeliveriesPage() {
           delivery_method,
           tally_invoice_number,
           created_at,
-          customers (company_name, phone),
+          customers (company_name, phone, address),
           sales_order_lines (id, quantity, product_id, products (name, unit))
         `)
         .eq('is_deleted', false)
@@ -71,7 +71,6 @@ export default function StaffDeliveriesPage() {
 
       if (error) throw error;
 
-      // Transform data cleanly
       const formatted = (data || []).map((o: any) => ({
         ...o,
         customers: Array.isArray(o.customers) ? o.customers[0] : o.customers,
@@ -112,7 +111,6 @@ export default function StaffDeliveriesPage() {
 
     setActionLoadingId(order.id);
     try {
-      // 1. Reduce stock for each product in order lines
       if (order.sales_order_lines && order.sales_order_lines.length > 0) {
         for (const line of order.sales_order_lines) {
           const { data: prod } = await supabase
@@ -142,7 +140,6 @@ export default function StaffDeliveriesPage() {
         }
       }
 
-      // 2. Update status to Delivered
       const { error: updateErr } = await supabase
         .from('sales_orders')
         .update({ status: 'Delivered' })
@@ -150,7 +147,6 @@ export default function StaffDeliveriesPage() {
 
       if (updateErr) throw updateErr;
 
-      // Local state update
       setOrders(prev =>
         prev.map(o => (o.id === order.id ? { ...o, status: 'Delivered' } : o))
       );
@@ -208,50 +204,66 @@ export default function StaffDeliveriesPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col pb-12">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col pb-16">
       {/* Mobile Sticky Header */}
-      <header className="sticky top-0 z-40 bg-slate-800/90 backdrop-blur border-b border-slate-700/60 px-4 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 flex justify-between items-center shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shadow-xs">
             <Icons.delivery className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white leading-tight">RDS Delivery Staff</h1>
-            <p className="text-xs text-slate-400">{user?.name || 'Driver'}</p>
+            <h1 className="text-sm font-bold text-slate-900 leading-tight">Delivery Dispatch</h1>
+            <p className="text-xs text-slate-500 font-medium">{user?.name || 'Driver'}</p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-400 hover:text-white">
-          <Icons.logout className="w-4 h-4 mr-1" /> Logout
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchDeliveries}
+            className="h-9 px-3 text-xs bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+            title="Refresh Deliveries"
+          >
+            <Icons.refresh className="w-3.5 h-3.5 mr-1 text-slate-500" /> Refresh
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="h-9 text-slate-500 hover:text-red-600 hover:bg-red-50 text-xs"
+          >
+            <Icons.logout className="w-4 h-4 mr-1" /> Logout
+          </Button>
+        </div>
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-md w-full mx-auto p-4 space-y-4">
+      <main className="flex-1 max-w-lg w-full mx-auto p-4 space-y-4">
         {/* Search */}
         <div className="relative">
-          <Icons.search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Icons.search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search order # or customer..."
+            placeholder="Search order # or customer name..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full bg-white border border-slate-200 rounded-xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder-slate-400 shadow-xs focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
           />
         </div>
 
         {/* Tab Filters */}
-        <div className="grid grid-cols-2 gap-2 bg-slate-800/60 p-1 rounded-xl border border-slate-700/50">
+        <div className="grid grid-cols-2 gap-2 bg-slate-200/70 p-1.5 rounded-2xl border border-slate-200">
           <button
             onClick={() => setActiveTab('pending')}
             className={cn(
-              "py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2",
+              "py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs",
               activeTab === 'pending'
-                ? "bg-primary text-white shadow"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-white text-primary shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
             )}
           >
             Pending / In-Transit
-            <Badge variant="secondary" className="bg-slate-700 text-slate-200 px-1.5 py-0 text-[10px]">
+            <Badge className={cn("px-1.5 py-0 text-[10px] font-bold rounded-full", activeTab === 'pending' ? "bg-primary text-white" : "bg-slate-300 text-slate-700")}>
               {pendingOrders.length}
             </Badge>
           </button>
@@ -259,14 +271,14 @@ export default function StaffDeliveriesPage() {
           <button
             onClick={() => setActiveTab('delivered')}
             className={cn(
-              "py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2",
+              "py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs",
               activeTab === 'delivered'
-                ? "bg-emerald-600 text-white shadow"
-                : "text-slate-400 hover:text-slate-200"
+                ? "bg-white text-emerald-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
             )}
           >
             Completed
-            <Badge variant="secondary" className="bg-slate-700 text-slate-200 px-1.5 py-0 text-[10px]">
+            <Badge className={cn("px-1.5 py-0 text-[10px] font-bold rounded-full", activeTab === 'delivered' ? "bg-emerald-600 text-white" : "bg-slate-300 text-slate-700")}>
               {completedOrders.length}
             </Badge>
           </button>
@@ -274,121 +286,138 @@ export default function StaffDeliveriesPage() {
 
         {/* Orders List */}
         {loading ? (
-          <div className="py-16 text-center">
-            <Icons.refresh className="w-8 h-8 text-primary animate-spin mx-auto mb-2" />
-            <p className="text-slate-400 text-xs">Fetching delivery dispatches...</p>
+          <div className="py-20 text-center space-y-3">
+            <Icons.refresh className="w-8 h-8 text-primary animate-spin mx-auto" />
+            <p className="text-slate-500 text-xs font-medium">Loading delivery dispatches...</p>
           </div>
         ) : displayedOrders.length === 0 ? (
-          <div className="py-12 text-center bg-slate-800/30 rounded-xl border border-slate-800 p-6">
-            <Icons.delivery className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-            <p className="text-slate-300 font-medium text-sm">No dispatches found</p>
+          <div className="py-16 text-center bg-white rounded-2xl border border-slate-200 p-8 shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <Icons.delivery className="w-6 h-6" />
+            </div>
+            <p className="text-slate-800 font-semibold text-sm">No dispatches found</p>
             <p className="text-slate-500 text-xs mt-1">There are no orders matching this tab or search.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {displayedOrders.map(order => {
               const isActioning = actionLoadingId === order.id;
 
               return (
-                <Card key={order.id} className="bg-slate-800 border-slate-700/60 overflow-hidden shadow-lg">
-                  <CardHeader className="p-4 pb-3 flex flex-row items-center justify-between space-y-0 border-b border-slate-700/50">
+                <Card key={order.id} className="bg-white border-slate-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+                  <CardHeader className="p-4 pb-3 flex flex-row items-start justify-between space-y-0 border-b border-slate-100 bg-slate-50/50">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-primary block">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-mono font-bold text-primary px-2 py-0.5 bg-primary/10 rounded-md">
                           {order.order_number}
                         </span>
                         {isToday(order.order_date) && (
-                          <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px] px-1.5 py-0">
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] font-semibold px-2 py-0.5 rounded-full">
                             Today
                           </Badge>
                         )}
                       </div>
-                      <CardTitle className="text-base font-bold text-white mt-0.5">
+                      <CardTitle className="text-base font-bold text-slate-900 tracking-tight">
                         {order.customers?.company_name || 'Unknown Customer'}
                       </CardTitle>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
-                        {new Date(order.order_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                        <span>Ordered: {new Date(order.order_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span>•</span>
+                        <span className="font-semibold text-slate-700">₹{Number(order.total_amount).toLocaleString('en-IN')}</span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
                       {order.status === 'Confirmed' ? (
-                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Confirmed</Badge>
+                        <Badge className="bg-blue-50 text-blue-700 border-blue-200 font-medium px-2.5 py-0.5">Confirmed</Badge>
                       ) : order.status === 'Partially Delivered' ? (
-                        <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Partial</Badge>
+                        <Badge className="bg-amber-50 text-amber-700 border-amber-200 font-medium px-2.5 py-0.5">Partial</Badge>
                       ) : order.status === 'Invoiced' ? (
-                        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 flex items-center gap-1">
+                        <Badge className="bg-purple-50 text-purple-700 border-purple-200 font-medium px-2.5 py-0.5 flex items-center gap-1">
                           <Icons.document className="w-3 h-3" /> Invoiced
                         </Badge>
                       ) : (
-                        <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 flex items-center gap-1">
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-medium px-2.5 py-0.5 flex items-center gap-1">
                           <Icons.delivered className="w-3 h-3" /> Delivered
                         </Badge>
                       )}
                       {order.tally_invoice_number && (
-                        <span className="font-mono text-[10px] text-slate-400 bg-slate-900/60 px-1.5 py-0.5 rounded border border-slate-700/40">
+                        <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                           Inv: {order.tally_invoice_number}
                         </span>
                       )}
                     </div>
                   </CardHeader>
 
-                  <CardContent className="p-4 space-y-3">
-                    {/* Customer Info & Phone Call Action */}
-                    <div className="flex items-center justify-between text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-lg border border-slate-700/40">
-                      <div className="flex items-center gap-2">
-                        <Icons.phone className="w-4 h-4 text-slate-400" />
-                        <span>{order.customers?.phone || 'No phone'}</span>
+                  <CardContent className="p-4 space-y-3.5">
+                    {/* Customer Contact & Actions */}
+                    <div className="flex items-center justify-between text-xs bg-slate-50 p-3 rounded-xl border border-slate-200/70">
+                      <div className="flex items-center gap-2 text-slate-700 font-medium">
+                        <Icons.phone className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span>{order.customers?.phone || 'No phone number'}</span>
                       </div>
+
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-500">Method:</span>
-                        <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0">
-                          {order.delivery_method || 'Not Specified'}
-                        </Badge>
+                        {order.delivery_method && (
+                          <span className="px-2 py-0.5 bg-slate-200/70 text-slate-700 rounded-md text-[11px] font-medium">
+                            {order.delivery_method}
+                          </span>
+                        )}
+                        {order.customers?.phone && (
+                          <div className="flex items-center gap-1.5">
+                            <a
+                              href={`tel:${order.customers.phone}`}
+                              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium flex items-center gap-1 shadow-xs transition-colors text-xs"
+                            >
+                              <Icons.phone className="w-3.5 h-3.5" /> Call
+                            </a>
+                            <a
+                              href={`https://wa.me/${order.customers.phone.replace(/[^0-9]/g, '')}?text=Hello%20from%20RDS%20Delivery%20regarding%20Order%20${order.order_number}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium flex items-center gap-1 shadow-xs transition-colors text-xs"
+                              title="WhatsApp Customer"
+                            >
+                              <Icons.phone className="w-3.5 h-3.5" /> WA
+                            </a>
+                          </div>
+                        )}
                       </div>
-                      {order.customers?.phone && (
-                        <a
-                          href={`tel:${order.customers.phone}`}
-                          className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded font-medium flex items-center gap-1 transition-colors"
-                        >
-                          <Icons.phone className="w-3 h-3" /> Call
-                        </a>
-                      )}
                     </div>
 
-                    {/* Items to Deliver (Always Visible) */}
-                    <div className="bg-slate-900/70 p-3 rounded-xl border border-slate-700/50 space-y-2">
-                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    {/* Items to Deliver */}
+                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                         <span>Items to Deliver</span>
-                        <span className="text-slate-400 font-normal">({order.sales_order_lines?.length || 0} items)</span>
+                        <span className="text-slate-600 font-semibold">({order.sales_order_lines?.length || 0} items)</span>
                       </div>
-                      <div className="divide-y divide-slate-800">
+                      <div className="divide-y divide-slate-200/60">
                         {order.sales_order_lines && order.sales_order_lines.length > 0 ? (
                           order.sales_order_lines.map(line => (
-                            <div key={line.id} className="py-2 first:pt-1 last:pb-0 flex items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-slate-100 truncate">
+                            <div key={line.id} className="py-2.5 first:pt-1 last:pb-0 flex items-center justify-between gap-3">
+                              <span className="text-xs font-semibold text-slate-800 leading-snug">
                                 {line.products?.name || 'Product'}
                               </span>
-                              <span className="font-mono text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded shrink-0">
+                              <span className="font-mono text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-md shrink-0">
                                 {line.quantity} {line.products?.unit || 'Units'}
                               </span>
                             </div>
                           ))
                         ) : (
-                          <div className="py-1 text-xs text-slate-500 italic">No items found</div>
+                          <div className="py-2 text-xs text-slate-400 italic">No items found</div>
                         )}
                       </div>
                     </div>
 
                     {/* Delivery Action Buttons */}
                     {(order.status === 'Confirmed' || order.status === 'Partially Delivered') && (
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-700/40">
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                         <Button
                           variant="outline"
                           size="sm"
                           disabled={isActioning}
                           onClick={() => markPartialDelivery(order)}
-                          className="bg-amber-950/40 border-amber-800/60 text-amber-300 hover:bg-amber-900/60 text-xs font-semibold py-2.5 h-auto"
+                          className="bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-semibold py-3 h-auto rounded-xl shadow-xs"
                         >
                           Partial Delivery
                         </Button>
@@ -397,13 +426,13 @@ export default function StaffDeliveriesPage() {
                           size="sm"
                           disabled={isActioning}
                           onClick={() => markOrderDelivered(order)}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2.5 h-auto flex items-center justify-center gap-1"
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-3 h-auto flex items-center justify-center gap-1.5 rounded-xl shadow-xs"
                         >
                           {isActioning ? (
-                            <Icons.refresh className="w-3.5 h-3.5 animate-spin" />
+                            <Icons.refresh className="w-4 h-4 animate-spin" />
                           ) : (
                             <>
-                              <Icons.delivered className="w-3.5 h-3.5" /> Complete
+                              <Icons.delivered className="w-4 h-4" /> Complete Delivery
                             </>
                           )}
                         </Button>
