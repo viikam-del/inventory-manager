@@ -40,7 +40,7 @@ export function Header({ onMobileMenuToggle }: HeaderProps) {
             variant="ghost"
             size="icon"
             onClick={onMobileMenuToggle}
-            className="md:hidden h-9 w-9 text-muted-foreground"
+            className="md:hidden h-10 w-10 text-muted-foreground"
             aria-label="Toggle navigation menu"
           >
             <Icons.menu className="h-5 w-5" />

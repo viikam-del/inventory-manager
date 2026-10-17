@@ -97,10 +97,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden h-8 w-8 text-muted-foreground"
+            className="md:hidden h-10 w-10 text-muted-foreground mr-1"
             onClick={onMobileClose}
           >
-            <Icons.close className="w-4 h-4" />
+            <Icons.close className="w-5 h-5" />
           </Button>
         )}
       </div>

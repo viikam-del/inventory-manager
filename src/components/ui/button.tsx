@@ -22,7 +22,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         "bg-success text-success-foreground shadow-sm hover:bg-success/90 active:scale-[0.98]": variant === "success",
         "bg-warning text-warning-foreground shadow-sm hover:bg-warning/90 active:scale-[0.98]": variant === "warning",
 
-        "h-9 px-4 py-2": size === "default",
+        // Enhanced mobile touch targets - minimum 44x44px for mobile accessibility
+        "h-10 px-4 py-2": size === "default",
         "h-8 rounded-md px-3 text-xs": size === "sm",
         "h-10 rounded-lg px-6 text-base": size === "lg",
         "h-9 w-9 p-0": size === "icon",

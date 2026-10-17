@@ -31,18 +31,24 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased flex flex-col selection:bg-primary/20 selection:text-primary">
-      {/* Sidebar Component */}
-      <Sidebar
-        mobileOpen={mobileSidebarOpen}
-        onMobileClose={() => setMobileSidebarOpen(false)}
-      />
+      {/* Mobile sidebar overlay */}
+      <div className="fixed inset-0 z-50 md:hidden flex bg-black/60 backdrop-blur-xs transition-opacity" id="mobile-sidebar-overlay">
+        <div className="relative flex-1 flex flex-col max-w-xs w-full bg-background shadow-2xl z-10 slide-in-left" id="mobile-sidebar-panel">
+          <Sidebar
+            mobileOpen={mobileSidebarOpen}
+            onMobileClose={() => setMobileSidebarOpen(false)}
+          />
+        </div>
+      </div>
 
-      {/* Main Content Area (Offset for Desktop Sidebar) */}
-      <div className="flex-1 flex flex-col md:pl-64">
-        <Header onMobileMenuToggle={() => setMobileSidebarOpen((prev) => !prev)} />
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-7xl w-full mx-auto">
-          {children}
-        </main>
+      {/* Main content area */}
+      <div className="min-h-screen bg-background text-foreground antialiased flex flex-col selection:bg-primary/20 selection:text-primary">
+        <div className="flex-1 flex flex-col md:pl-64">
+          <Header onMobileMenuToggle={() => setMobileSidebarOpen((prev) => !prev)} />
+          <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-7xl w-full mx-auto">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );
