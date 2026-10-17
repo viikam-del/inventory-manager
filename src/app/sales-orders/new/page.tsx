@@ -148,7 +148,7 @@ export default function NewSalesOrderPage() {
         ]);
 
         const totalSales = (salesRes.data || []).reduce(
-          (acc, row) => acc + (Number(row.total_amount) || 0) + (Number(row.gst_amount) || 0),
+          (acc, row) => acc + (Number(row.total_amount) || 0),
           0
         );
         const totalPays = (payRes.data || []).reduce(
