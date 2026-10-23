@@ -81,7 +81,7 @@ export default function ProductDetailPage() {
     }
   };
 
-  async function fetchProductLedger(productId: string) {
+  async function fetchProductLedger(productId: string, stockParam?: number) {
     setLedgerLoading(true);
     try {
       // 1. Fetch raw stock adjustments
@@ -93,12 +93,14 @@ export default function ProductDetailPage() {
 
       if (adjError) throw adjError;
 
+      const effectiveStock = stockParam !== undefined ? stockParam : (product?.current_stock || 0);
+
       // If no adjustments exist, but product has current_stock > 0, backfill an opening stock adjustment
-      if ((!adjustments || adjustments.length === 0) && product && product.current_stock > 0) {
+      if ((!adjustments || adjustments.length === 0) && effectiveStock > 0) {
         await supabase.from('stock_adjustments').insert({
           product_id: productId,
           adjustment_type: 'In',
-          quantity: product.current_stock,
+          quantity: effectiveStock,
           reason: 'Initial Opening Stock (Auto-recorded)',
           reference_type: 'Opening Stock',
           reference_id: null,
@@ -323,7 +325,7 @@ export default function ProductDetailPage() {
       if (supabaseError) throw supabaseError;
       setProduct(data);
       if (data) {
-        fetchProductLedger(data.id);
+        fetchProductLedger(data.id, data.current_stock);
         getAuditLogsForEntity('product', data.id)
           .then(setAuditLogs)
           .catch((err) => console.error('Failed to load audit logs:', err));
