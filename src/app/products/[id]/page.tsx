@@ -23,6 +23,7 @@ interface Product {
   price_gst: number;
   price_non_gst: number;
   current_stock: number;
+  min_stock_level: number;
   description: string | null;
 }
 
@@ -52,18 +53,64 @@ export default function ProductDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [stockDrift, setStockDrift] = useState<{ hasDrift: boolean; ledgerBalance: number } | null>(null);
+
+  const handleReconcile = async () => {
+    if (!product || !stockDrift) return;
+    if (!confirm(`Reconcile stock? This will update product current stock from ${product.current_stock} to ledger balance ${stockDrift.ledgerBalance}.`)) return;
+
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ current_stock: stockDrift.ledgerBalance, updated_at: new Date().toISOString() })
+        .eq('id', product.id);
+
+      if (error) throw error;
+      void logAuditEvent('product', product.id, 'adjust_stock', null, {
+        old_stock: product.current_stock,
+        new_stock: stockDrift.ledgerBalance,
+        reason: 'Stock Reconciliation'
+      });
+      alert('Stock reconciled successfully!');
+      fetchProduct();
+    } catch (err: any) {
+      alert(err.message || 'Failed to reconcile stock');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   async function fetchProductLedger(productId: string) {
     setLedgerLoading(true);
     try {
       // 1. Fetch raw stock adjustments
-      const { data: adjustments, error: adjError } = await supabase
+      let { data: adjustments, error: adjError } = await supabase
         .from('stock_adjustments')
         .select('*')
         .eq('product_id', productId)
         .order('created_at', { ascending: true }); // chronological
 
       if (adjError) throw adjError;
+
+      // If no adjustments exist, but product has current_stock > 0, backfill an opening stock adjustment
+      if ((!adjustments || adjustments.length === 0) && product && product.current_stock > 0) {
+        await supabase.from('stock_adjustments').insert({
+          product_id: productId,
+          adjustment_type: 'In',
+          quantity: product.current_stock,
+          reason: 'Initial Opening Stock (Auto-recorded)',
+          reference_type: 'Opening Stock',
+          reference_id: null,
+        });
+        const { data: retryAdj } = await supabase
+          .from('stock_adjustments')
+          .select('*')
+          .eq('product_id', productId)
+          .order('created_at', { ascending: true });
+        adjustments = retryAdj || [];
+      }
+
       if (!adjustments || adjustments.length === 0) {
         setLedger([]);
         setLedgerLoading(false);
@@ -170,7 +217,11 @@ export default function ProductDetailPage() {
         let reference_number = adj.id ? adj.id.substring(0, 8) : 'ADJ-MANUAL';
         let counterparty = 'Manual Entry';
 
-        if (adj.reference_type === 'Receipt') {
+        if (adj.reference_type === 'Opening Stock' || adj.reference_type === 'Opening Balance' || adj.reference_type === 'Initial Stock') {
+          display_type = 'Opening Stock';
+          reference_number = 'OPENING';
+          counterparty = 'Initial Inventory';
+        } else if (adj.reference_type === 'Receipt') {
           display_type = 'Purchase Inbound';
           const rec = receiptsMap.get(adj.reference_id);
           if (rec) {
@@ -246,6 +297,11 @@ export default function ProductDetailPage() {
 
       // We reverse the array because typically users want to see newest entries at the top
       setLedger(enrichedLedger.reverse());
+
+      if (product) {
+        const hasDrift = Math.abs(product.current_stock - runningBalance) > 0.001;
+        setStockDrift({ hasDrift, ledgerBalance: runningBalance });
+      }
 
     } catch (err: any) {
       console.error('Failed to load product ledger', err);
@@ -378,6 +434,42 @@ export default function ProductDetailPage() {
           </div>
         }
       />
+
+      {/* Stock Drift Warning Banner */}
+      {stockDrift?.hasDrift && (
+        <Card className="mb-6 border-amber-500/30 bg-amber-500/10">
+          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-700 dark:text-amber-400 text-sm font-medium">
+            <div className="flex items-center gap-2.5">
+              <Icons.warning className="w-5 h-5 shrink-0" />
+              <span>
+                <strong>Stock Drift Detected:</strong> Current stock ({product.current_stock}) does not match ledger balance ({stockDrift.ledgerBalance}).
+              </span>
+            </div>
+            <Button size="sm" variant="outline" onClick={handleReconcile} disabled={actionLoading} className="border-amber-500/40 hover:bg-amber-500/20 text-xs">
+              Reconcile to {stockDrift.ledgerBalance}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Low Stock Warning Banner */}
+      {product.current_stock <= product.min_stock_level && (
+        <Card className="mb-6 border-destructive/30 bg-destructive/10">
+          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-destructive text-sm font-medium">
+            <div className="flex items-center gap-2.5">
+              <Icons.warning className="w-5 h-5 shrink-0" />
+              <span>
+                <strong>Low Stock Alert:</strong> Stock ({product.current_stock} {product.unit}) is at or below minimum threshold ({product.min_stock_level} {product.unit}).
+              </span>
+            </div>
+            <Button size="sm" asChild variant="outline" className="border-destructive/40 hover:bg-destructive/20 text-xs">
+              <Link href={`/purchase-orders/new?product_id=${product.id}`}>
+                Create Reorder PO
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         {/* Basic Info */}

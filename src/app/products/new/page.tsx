@@ -116,7 +116,9 @@ export default function NewProductPage() {
         throw new Error(errorMessage);
       }
 
-      const { error: insertError } = await supabase.from('products').insert({
+      const openingStock = parseFloat(formData.current_stock) || 0;
+
+      const { data: insertedProduct, error: insertError } = await supabase.from('products').insert({
         name: formData.name,
         sku_code: sku,
         unit: formData.unit,
@@ -125,14 +127,26 @@ export default function NewProductPage() {
         price_gst: parseFloat(formData.price_gst) || 0,
         price_non_gst: parseFloat(formData.price_non_gst) || 0,
         min_stock_level: parseFloat(formData.min_stock_level) || 0,
-        current_stock: parseFloat(formData.current_stock) || 0,
+        current_stock: openingStock,
         segment_id: formData.segment_id || null,
         category_id: formData.category_id || null,
         sub_category_id: formData.sub_category_id || null,
         notes: formData.notes,
-      });
+      }).select('id').single();
 
       if (insertError) throw insertError;
+
+      if (openingStock > 0 && insertedProduct) {
+        await supabase.from('stock_adjustments').insert({
+          product_id: insertedProduct.id,
+          adjustment_type: 'In',
+          quantity: openingStock,
+          reason: 'Initial Opening Stock',
+          reference_type: 'Opening Stock',
+          reference_id: null,
+        });
+      }
+
       router.push('/products');
     } catch (err: any) {
       setError(err.message || 'An error occurred while creating product');
