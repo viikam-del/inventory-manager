@@ -1,5 +1,13 @@
 # Project Version Manifest
 
+## v18.5 - Mobile Navigation Fix
+**Date:** 2026-10-23
+**Status:** Stable / Production Verified
+
+### Key Features & Fixes in v18.5
+- **Mobile Menu / Navigation Fix**: Resolved blank mobile screen / overlay issue by removing unconditional backdrop wrappers in `AppShell` and cleanly delegating mobile drawer state to the `Sidebar` component.
+- **Production Build**: Verified clean build across all 32 Next.js routes.
+
 ## v4.0.0 - Milestone
 **Date:** 2025-09-25
 **Status:** Stable / Audit Passed
