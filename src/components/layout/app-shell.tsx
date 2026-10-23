@@ -31,23 +31,11 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased flex flex-col selection:bg-primary/20 selection:text-primary">
-      {/* Desktop Sidebar - Only rendered on md screens */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-30">
-        <Sidebar
-          mobileOpen={mobileSidebarOpen}
-          onMobileClose={() => setMobileSidebarOpen(false)}
-        />
-      </aside>
-
-      {/* Mobile sidebar overlay */}
-      <div className="fixed inset-0 z-50 md:hidden flex bg-black/60 backdrop-blur-xs transition-opacity" id="mobile-sidebar-overlay">
-        <div className="relative flex-1 flex flex-col max-w-xs w-full bg-background shadow-2xl z-10 slide-in-left" id="mobile-sidebar-panel">
-          <Sidebar
-            mobileOpen={mobileSidebarOpen}
-            onMobileClose={() => setMobileSidebarOpen(false)}
-          />
-        </div>
-      </div>
+      {/* Sidebar (Desktop persistent & Mobile drawer) */}
+      <Sidebar
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col md:pl-64 min-h-screen bg-background text-foreground antialiased flex flex-col selection:bg-primary/20 selection:text-primary">
