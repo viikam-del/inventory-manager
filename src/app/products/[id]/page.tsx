@@ -95,22 +95,47 @@ export default function ProductDetailPage() {
 
       const effectiveStock = stockParam !== undefined ? stockParam : (product?.current_stock || 0);
 
-      // If no adjustments exist, but product has current_stock > 0, backfill an opening stock adjustment
-      if ((!adjustments || adjustments.length === 0) && effectiveStock > 0) {
-        await supabase.from('stock_adjustments').insert({
-          product_id: productId,
-          adjustment_type: 'In',
-          quantity: effectiveStock,
-          reason: 'Initial Opening Stock (Auto-recorded)',
-          reference_type: 'Opening Stock',
-          reference_id: null,
-        });
-        const { data: retryAdj } = await supabase
-          .from('stock_adjustments')
-          .select('*')
-          .eq('product_id', productId)
-          .order('created_at', { ascending: true });
-        adjustments = retryAdj || [];
+      // Check if opening stock adjustment exists
+      const hasOpening = adjustments && adjustments.some((a: any) =>
+        ['Opening Stock', 'Opening Balance', 'Initial Stock'].includes(a.reference_type)
+      );
+
+      if (!hasOpening) {
+        let netChange = 0;
+        if (adjustments) {
+          adjustments.forEach((a: any) => {
+            const q = Number(a.quantity) || 0;
+            if (a.adjustment_type === 'In') netChange += q;
+            else netChange -= q;
+          });
+        }
+
+        const calculatedOpening = effectiveStock - netChange;
+
+        if (calculatedOpening > 0 || (!adjustments || adjustments.length === 0)) {
+          const openingQty = calculatedOpening > 0 ? calculatedOpening : effectiveStock;
+          if (openingQty > 0) {
+            const firstAdjDate = adjustments?.[0]?.created_at;
+            const openingDate = firstAdjDate ? new Date(new Date(firstAdjDate).getTime() - 1000 * 60).toISOString() : new Date().toISOString();
+
+            await supabase.from('stock_adjustments').insert({
+              product_id: productId,
+              adjustment_type: 'In',
+              quantity: openingQty,
+              reason: 'Initial Opening Stock (Auto-backfilled)',
+              reference_type: 'Opening Stock',
+              reference_id: null,
+              created_at: openingDate
+            });
+
+            const { data: retryAdj } = await supabase
+              .from('stock_adjustments')
+              .select('*')
+              .eq('product_id', productId)
+              .order('created_at', { ascending: true });
+            adjustments = retryAdj || [];
+          }
+        }
       }
 
       if (!adjustments || adjustments.length === 0) {
