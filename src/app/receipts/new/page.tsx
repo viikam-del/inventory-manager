@@ -346,22 +346,42 @@ function NewReceiptForm() {
 
       if (linesError) throw linesError;
 
-      // 3. Update stock levels and create stock adjustments for each received item
+      // 3. Calculate freight per unit and update stock levels, cost prices, and create stock adjustments
+      const totalFreight = parseFloat(formData.delivery_charges.toString()) || 0;
+      const totalQty = validLines.reduce((sum, l) => sum + Number(l.quantity_received), 0);
+      const freightPerUnit = totalQty > 0 ? totalFreight / totalQty : 0;
+
       for (const line of validLines) {
-        // Fetch current product stock
+        // Fetch current product stock and cost price
         const { data: prodData } = await supabase
           .from('products')
-          .select('current_stock')
+          .select('current_stock, cost_price')
           .eq('id', line.product_id)
           .single();
 
         const currentStock = Number(prodData?.current_stock) || 0;
+        const currentCostPrice = Number(prodData?.cost_price) || 0;
+
+        const baseUnitCost = (Number(line.billed_rate) || 0) + (Number(line.cash_rate) || 0);
+        const landedUnitCost = baseUnitCost + freightPerUnit;
+
         const newStock = currentStock + Number(line.quantity_received);
 
-        // Update product stock
+        // Calculate weighted average cost price
+        let newCostPrice = landedUnitCost;
+        if (newStock > 0) {
+          newCostPrice = ((currentStock * currentCostPrice) + (Number(line.quantity_received) * landedUnitCost)) / newStock;
+        }
+        newCostPrice = Number(newCostPrice.toFixed(2));
+
+        // Update product stock and cost_price
         await supabase
           .from('products')
-          .update({ current_stock: newStock })
+          .update({
+            current_stock: newStock,
+            cost_price: newCostPrice,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', line.product_id);
 
         // Insert stock adjustment audit entry
@@ -371,7 +391,7 @@ function NewReceiptForm() {
             product_id: line.product_id,
             adjustment_type: 'In',
             quantity: line.quantity_received,
-            reason: `Goods Received Note: ${receiptData.receipt_number}`,
+            reason: `Goods Received Note: ${receiptData.receipt_number} (Cost: ₹${landedUnitCost.toFixed(2)}/unit incl. freight ₹${freightPerUnit.toFixed(2)})`,
             reference_type: 'Receipt',
             reference_id: receiptData.id
           }]);

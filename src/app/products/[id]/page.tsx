@@ -22,6 +22,7 @@ interface Product {
   gst_rate: number;
   price_gst: number;
   price_non_gst: number;
+  cost_price: number;
   current_stock: number;
   min_stock_level: number;
   description: string | null;
@@ -549,18 +550,31 @@ export default function ProductDetailPage() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Pricing / Rates</CardTitle>
+              <CardTitle className="text-sm">Pricing / Rates & Margin</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Cost Price (Landed)</span>
+                  <span className="font-mono font-medium">₹{Number(product.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-border/50">
                   <span className="text-sm text-muted-foreground">Cash (Non-GST)</span>
                   <span className="font-mono font-medium">₹{Number(product.price_non_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center pb-2 border-b border-border/50">
                   <span className="text-sm text-muted-foreground">Billed (With GST)</span>
                   <span className="font-mono font-bold">₹{Number(product.price_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
+                {product.cost_price > 0 && (
+                  <div className="flex justify-between items-center pt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span>Estimated Unit Profit (Non-GST)</span>
+                    <span className="font-mono">
+                      ₹{(Number(product.price_non_gst) - Number(product.cost_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      {' '}({Math.round(((Number(product.price_non_gst) - Number(product.cost_price)) / Number(product.cost_price)) * 100)}%)
+                    </span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

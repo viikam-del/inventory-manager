@@ -18,6 +18,7 @@ export default function NewProductPage() {
     gst_rate: 18,
     price_gst: '',
     price_non_gst: '',
+    cost_price: '',
     min_stock_level: '',
     current_stock: '',
     segment_id: '',
@@ -126,6 +127,7 @@ export default function NewProductPage() {
         gst_rate: formData.gst_rate,
         price_gst: parseFloat(formData.price_gst) || 0,
         price_non_gst: parseFloat(formData.price_non_gst) || 0,
+        cost_price: parseFloat(formData.cost_price) || 0,
         min_stock_level: parseFloat(formData.min_stock_level) || 0,
         current_stock: openingStock,
         segment_id: formData.segment_id || null,
@@ -253,7 +255,7 @@ export default function NewProductPage() {
               <CardDescription className="text-xs">GST tax schedule and differentiated customer pricing rates</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
                     GST Rate (%) <span className="text-destructive">*</span>
@@ -271,7 +273,7 @@ export default function NewProductPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
-                    Price (GST Customer) ₹ <span className="text-destructive">*</span>
+                    Price (GST) ₹ <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="number"
@@ -287,7 +289,7 @@ export default function NewProductPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
-                    Price (Non-GST Customer) ₹ <span className="text-destructive">*</span>
+                    Price (Non-GST) ₹ <span className="text-destructive">*</span>
                   </label>
                   <input
                     type="number"
@@ -295,6 +297,21 @@ export default function NewProductPage() {
                     value={formData.price_non_gst}
                     onChange={handleChange}
                     required
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Cost Price ₹ <span className="text-muted-foreground font-normal">(Base / Landed)</span>
+                  </label>
+                  <input
+                    type="number"
+                    name="cost_price"
+                    value={formData.cost_price}
+                    onChange={handleChange}
                     min="0"
                     step="0.01"
                     placeholder="0.00"
