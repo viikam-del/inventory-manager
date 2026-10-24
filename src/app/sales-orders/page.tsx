@@ -364,7 +364,7 @@ export default function SalesOrdersPage() {
                             </Link>
                           </Button>
                           <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="Edit Order">
-                            <Link href={`/sales-orders/${order.id}?edit=true`}>
+                            <Link href={`/sales-orders/${order.id}/edit`}>
                               <Icons.edit className="w-4 h-4" />
                             </Link>
                           </Button>
