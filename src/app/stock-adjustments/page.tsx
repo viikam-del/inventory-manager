@@ -24,7 +24,6 @@ interface StockAdjustment {
     name: string;
     sku_code: string;
     unit: string;
-    category?: string;
     current_stock: number;
   } | null;
 }
@@ -62,7 +61,6 @@ export default function StockAdjustmentsPage() {
             name,
             sku_code,
             unit,
-            category,
             current_stock
           )
         `)

@@ -93,7 +93,7 @@ function NewStockAdjustmentForm() {
     try {
       const { data, error: prodErr } = await supabase
         .from('products')
-        .select('id, name, sku_code, unit, category, current_stock')
+        .select('id, name, sku_code, unit, current_stock, category:categories(name)')
         .eq('is_deleted', false)
         .order('name', { ascending: true });
 
@@ -103,7 +103,7 @@ function NewStockAdjustmentForm() {
         name: p.name,
         sku_code: p.sku_code,
         unit: p.unit || 'Units',
-        category: p.category || 'General',
+        category: p.category?.name || 'General',
         current_stock: Number(p.current_stock) || 0,
       }));
       setProducts(list);
