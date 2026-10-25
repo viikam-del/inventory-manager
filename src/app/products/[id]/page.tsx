@@ -73,6 +73,7 @@ export default function ProductDetailPage() {
 
       if (!error && data) {
         const activeLines = data.filter((l: any) => l.purchase_orders && !l.purchase_orders.is_deleted);
+        activeLines.sort((a: any, b: any) => new Date(b.purchase_orders?.order_date || 0).getTime() - new Date(a.purchase_orders?.order_date || 0).getTime());
         setPoCostHistory(activeLines);
       }
     } catch (e) {
@@ -578,148 +579,94 @@ export default function ProductDetailPage() {
               <CardTitle className="text-sm">Pricing / Rates & Margin</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center pb-2 border-b border-border/50">
-                  <span className="text-sm text-muted-foreground">Cost Price (Landed)</span>
-                  <span className="font-mono font-medium">₹{Number(product.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-border/50">
-                  <span className="text-sm text-muted-foreground">Cash (Non-GST)</span>
-                  <span className="font-mono font-medium">₹{Number(product.price_non_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                </div>
-                <div className="flex justify-between items-center pb-2 border-b border-border/50">
-                  <span className="text-sm text-muted-foreground">Billed (With GST)</span>
-                  <span className="font-mono font-bold">₹{Number(product.price_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                </div>
-                {product.cost_price > 0 && (
-                  <div className="flex justify-between items-center pt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    <span>Estimated Unit Profit (Non-GST)</span>
-                    <span className="font-mono">
-                      ₹{(Number(product.price_non_gst) - Number(product.cost_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      {' '}({Math.round(((Number(product.price_non_gst) - Number(product.cost_price)) / Number(product.cost_price)) * 100)}%)
-                    </span>
+              {(() => {
+                const latestPoLine = poCostHistory.length > 0 ? poCostHistory[0] : null;
+                const latestBilled = latestPoLine ? (Number(latestPoLine.billed_rate) || (latestPoLine.cash_rate === undefined ? Number(latestPoLine.unit_cost) || 0 : 0)) : 0;
+                const latestCash = latestPoLine ? Number(latestPoLine.cash_rate || 0) : 0;
+                const latestBaseCost = latestBilled + latestCash > 0 ? latestBilled + latestCash : Number(latestPoLine?.unit_cost || Number(product?.cost_price || 0));
+                const latestPoDelivery = latestPoLine ? Number(latestPoLine.purchase_orders?.delivery_charges || 0) : 0;
+                const latestSiblingLines = latestPoLine?.purchase_orders?.purchase_order_lines || [];
+                const latestTotalPoQty = latestSiblingLines.reduce((sum: number, sl: any) => sum + (Number(sl.quantity) || 0), 0);
+                const latestFreightPerUnit = latestTotalPoQty > 0 ? latestPoDelivery / latestTotalPoQty : 0;
+
+                const effectiveCostPrice = latestPoLine ? (latestBaseCost + latestFreightPerUnit) : Number(product?.cost_price || 0);
+
+                const nonGstPrice = Number(product?.price_non_gst || 0);
+                const gstPrice = Number(product?.price_gst || 0);
+
+                const nonGstProfit = nonGstPrice - effectiveCostPrice;
+                const nonGstMarginPct = effectiveCostPrice > 0 ? Math.round((nonGstProfit / effectiveCostPrice) * 100) : 0;
+
+                const gstProfit = gstPrice - effectiveCostPrice;
+                const gstMarginPct = effectiveCostPrice > 0 ? Math.round((gstProfit / effectiveCostPrice) * 100) : 0;
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                      <span className="text-sm text-muted-foreground">Cost Price (Landed)</span>
+                      <span className="font-mono font-medium">₹{effectiveCostPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                      <span className="text-sm text-muted-foreground">Cash (Non-GST)</span>
+                      <span className="font-mono font-medium">₹{nonGstPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-2 border-b border-border/50">
+                      <span className="text-sm text-muted-foreground">Billed (With GST)</span>
+                      <span className="font-mono font-bold">₹{gstPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {effectiveCostPrice > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex justify-between items-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                          <span>Estimated Unit Profit (Non-GST)</span>
+                          <span className="font-mono">
+                            ₹{nonGstProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })} ({nonGstMarginPct}%)
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs font-semibold text-primary">
+                          <span>Estimated Unit Profit (GST)</span>
+                          <span className="font-mono">
+                            ₹{gstProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })} ({gstMarginPct}%)
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Procurement Cost Calculation & PO History with Live Numbers */}
+      {/* PO History & Unit Cost Breakdown */}
       <div className="mt-6 sm:mt-8 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Icons.inventory className="w-5 h-5 text-primary" /> Cost Calculation & Weighted Average Math (Live Numbers)
+              <Icons.inventory className="w-5 h-5 text-primary" /> Procuring Purchase Orders & Unit Cost History
             </CardTitle>
             <CardDescription className="text-xs">
-              Step-by-step numerical breakdown of landed cost price, weighted average valuation, and unit profit margins for {product.name}
+              Purchase order lines, commercial split rates, apportioned freight, and landed unit costs for {product.name}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {(() => {
-              const currentStock = Number(product.current_stock) || 0;
-              const currentCp = Number(product.cost_price) || 0;
-              const nonGstPrice = Number(product.price_non_gst) || 0;
-              const unitProfit = nonGstPrice - currentCp;
-              const marginPct = currentCp > 0 ? Math.round((unitProfit / currentCp) * 100) : 0;
-
-              const latestPoLine = poCostHistory.length > 0 ? poCostHistory[0] : null;
-              const receivedQty = latestPoLine ? Number(latestPoLine.quantity) || 50 : Math.min(20, currentStock || 50);
-              const landedCost = latestPoLine ? Number(latestPoLine.unit_cost) || currentCp : currentCp;
-              const priorStock = Math.max(0, currentStock - receivedQty);
-
-              const valuationPrior = priorStock * currentCp;
-              const valuationReceived = receivedQty * landedCost;
-
-              return (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Weighted Average Cost Card with Numbers */}
-                    <div className="bg-muted/40 p-4 rounded-lg border border-border/60 space-y-2.5">
-                      <h4 className="font-semibold text-xs uppercase tracking-wider text-primary flex items-center justify-between">
-                        <span>1. Weighted Average Cost Calculation</span>
-                        <span className="font-mono text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">Active CP: ₹{currentCp.toFixed(2)}</span>
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        Numerical breakdown using current stock inventory and latest PO receiving batch:
-                      </p>
-
-                      <div className="bg-background p-3 rounded border space-y-1.5 font-mono text-xs text-foreground shadow-xs">
-                        <div className="flex justify-between border-b border-border/40 pb-1 text-[11px] text-muted-foreground">
-                          <span>Component Variable</span>
-                          <span>Value & Formula</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Prior Stock & CP:</span>
-                          <span>{priorStock} {product.unit} × ₹{currentCp.toFixed(2)} = ₹{valuationPrior.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Received Qty & Landed Cost:</span>
-                          <span>{receivedQty} {product.unit} × ₹{landedCost.toFixed(2)} = ₹{valuationReceived.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between border-t border-border/40 pt-1 font-bold text-primary">
-                          <span>Resulting Weighted CP:</span>
-                          <span>(₹{valuationPrior.toLocaleString()} + ₹{valuationReceived.toLocaleString()}) / {currentStock || (priorStock + receivedQty)} = ₹{currentCp.toFixed(2)} / {product.unit}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Profit Margin Card with Numbers */}
-                    <div className="bg-muted/40 p-4 rounded-lg border border-border/60 space-y-2.5">
-                      <h4 className="font-semibold text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
-                        <span>2. Profit Margin Calculation</span>
-                        <span className="font-mono text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded">Margin: {marginPct}%</span>
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        Numerical breakdown comparing Non-GST Selling Price against Landed Cost Price:
-                      </p>
-
-                      <div className="bg-background p-3 rounded border space-y-1.5 font-mono text-xs text-foreground shadow-xs">
-                        <div className="flex justify-between border-b border-border/40 pb-1 text-[11px] text-muted-foreground">
-                          <span>Pricing Metric</span>
-                          <span>Numerical Amount</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Non-GST Selling Price:</span>
-                          <span>₹{nonGstPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Less: Landed Cost Price (CP):</span>
-                          <span>- ₹{currentCp.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between border-t border-border/40 pt-1 font-bold text-emerald-600 dark:text-emerald-400">
-                          <span>Net Unit Profit & %:</span>
-                          <span>₹{unitProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })} ({marginPct}%)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* PO Cost History Breakdown */}
-            <div className="pt-4 border-t border-border/50">
-              <h4 className="font-semibold text-xs uppercase tracking-wider text-foreground mb-3">Procuring Purchase Orders & Unit Cost History</h4>
-              {poCostHistory.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">No purchase order lines recorded for this product yet. Cost price is currently set from initial opening stock or manual adjustment.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-muted/60 border-b border-border/60 text-muted-foreground font-medium uppercase tracking-wider">
-                      <tr>
-                        <th className="px-3 py-2">PO # & Date</th>
-                        <th className="px-3 py-2">Supplier</th>
-                        <th className="px-3 py-2 text-right">Qty Received</th>
-                        <th className="px-3 py-2 text-right">Billed Rate</th>
-                        <th className="px-3 py-2 text-right">Cash Rate</th>
-                        <th className="px-3 py-2 text-right">Freight Per Unit</th>
-                        <th className="px-3 py-2 text-right">Total Landed Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
+            {poCostHistory.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No purchase order lines recorded for this product yet. Cost price is currently set from initial opening stock or manual adjustment.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/60 border-b border-border/60 text-muted-foreground font-medium uppercase tracking-wider">
+                    <tr>
+                      <th className="px-3 py-2">PO # & Date</th>
+                      <th className="px-3 py-2">Supplier</th>
+                      <th className="px-3 py-2 text-right">Qty Received</th>
+                      <th className="px-3 py-2 text-right">Billed Rate</th>
+                      <th className="px-3 py-2 text-right">Cash Rate</th>
+                      <th className="px-3 py-2 text-right">Freight Per Unit</th>
+                      <th className="px-3 py-2 text-right">Total Landed Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
                       {poCostHistory.map((line: any) => {
                         const billed = Number(line.billed_rate) || (line.cash_rate === undefined ? Number(line.unit_cost) || 0 : 0);
                         const cash = Number(line.cash_rate || 0);
@@ -767,7 +714,6 @@ export default function ProductDetailPage() {
                   </p>
                 </div>
               )}
-            </div>
           </CardContent>
         </Card>
       </div>
