@@ -65,7 +65,8 @@ export default function ProductDetailPage() {
           id, quantity, unit_cost, billed_rate, cash_rate,
           purchase_orders (
             po_number, order_date, delivery_charges, is_deleted,
-            suppliers ( company_name )
+            suppliers ( company_name ),
+            purchase_order_lines ( quantity )
           )
         `)
         .eq('product_id', productId);
@@ -720,11 +721,15 @@ export default function ProductDetailPage() {
                     </thead>
                     <tbody className="divide-y divide-border/50">
                       {poCostHistory.map((line: any) => {
-                        const billed = Number(line.billed_rate || 0);
+                        const billed = Number(line.billed_rate) || (line.cash_rate === undefined ? Number(line.unit_cost) || 0 : 0);
                         const cash = Number(line.cash_rate || 0);
-                        const baseCost = billed + cash;
-                        const freightPerUnit = Number(line.unit_cost) - baseCost;
-                        const totalLanded = Number(line.unit_cost) || baseCost;
+                        const baseCost = billed + cash > 0 ? billed + cash : Number(line.unit_cost) || 0;
+
+                        const poDelivery = Number(line.purchase_orders?.delivery_charges || 0);
+                        const siblingLines = line.purchase_orders?.purchase_order_lines || [];
+                        const totalPoQty = siblingLines.reduce((sum: number, sl: any) => sum + (Number(sl.quantity) || 0), 0);
+                        const freightPerUnit = totalPoQty > 0 ? poDelivery / totalPoQty : 0;
+                        const totalLanded = baseCost + freightPerUnit;
 
                         return (
                           <tr key={line.id} className="hover:bg-muted/30">
