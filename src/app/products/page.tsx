@@ -20,19 +20,64 @@ export default function ProductsPage() {
   async function fetchProducts() {
     setLoading(true);
     try {
-      const { data, error: supabaseError } = await supabase
-        .from('products')
-        .select(`
-          *,
-          segment:segments(name),
-          category:categories(name),
-          sub_category:sub_categories(name)
-        `)
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false }).limit(1000);
+      const [productsRes, poLinesRes] = await Promise.all([
+        supabase
+          .from('products')
+          .select(`
+            *,
+            segment:segments(name),
+            category:categories(name),
+            sub_category:sub_categories(name)
+          `)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+          .limit(1000),
+        supabase
+          .from('purchase_order_lines')
+          .select(`
+            product_id, quantity, unit_cost, billed_rate, cash_rate,
+            purchase_orders (
+              order_date, delivery_charges, is_deleted,
+              purchase_order_lines ( quantity )
+            )
+          `)
+      ]);
 
-      if (supabaseError) throw supabaseError;
-      setProducts(data || []);
+      if (productsRes.error) throw productsRes.error;
+      const productsData = productsRes.data || [];
+      const poLinesData = poLinesRes.data || [];
+
+      // Build landed cost map from active PO lines
+      const landedCostMap = new Map<string, number>();
+      const byProduct = new Map<string, any[]>();
+      poLinesData.forEach((l: any) => {
+        if (!l.purchase_orders || l.purchase_orders.is_deleted) return;
+        if (!l.product_id) return;
+        if (!byProduct.has(l.product_id)) {
+          byProduct.set(l.product_id, []);
+        }
+        byProduct.get(l.product_id)!.push(l);
+      });
+
+      byProduct.forEach((lines, prodId) => {
+        lines.sort((a: any, b: any) => new Date(b.purchase_orders?.order_date || 0).getTime() - new Date(a.purchase_orders?.order_date || 0).getTime());
+        const latestPoLine = lines[0];
+        const bRate = Number(latestPoLine.billed_rate) || (latestPoLine.cash_rate === undefined ? Number(latestPoLine.unit_cost) || 0 : 0);
+        const cRate = Number(latestPoLine.cash_rate || 0);
+        const baseCost = bRate + cRate > 0 ? bRate + cRate : Number(latestPoLine.unit_cost || 0);
+        const delivery = Number(latestPoLine.purchase_orders?.delivery_charges || 0);
+        const siblingLines = latestPoLine.purchase_orders?.purchase_order_lines || [];
+        const totalQty = siblingLines.reduce((sum: number, sl: any) => sum + (Number(sl.quantity) || 0), 0);
+        const freightPerUnit = totalQty > 0 ? delivery / totalQty : 0;
+        landedCostMap.set(prodId, baseCost + freightPerUnit);
+      });
+
+      const enriched = productsData.map((p: any) => ({
+        ...p,
+        effective_cost_price: landedCostMap.get(p.id) ?? Number(p.cost_price || 0)
+      }));
+
+      setProducts(enriched);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -199,6 +244,11 @@ export default function ProductsPage() {
                 {filtered.length > 0 ? (
                   filtered.map((product) => {
                     const isLow = Number(product.current_stock) <= Number(product.min_stock_level);
+                    const effectiveCost = Number(product.effective_cost_price || product.cost_price || 0);
+                    const nonGstPrice = Number(product.price_non_gst || 0);
+                    const profit = nonGstPrice - effectiveCost;
+                    const profitPct = effectiveCost > 0 ? Math.round((profit / effectiveCost) * 100) : 0;
+
                     return (
                       <tr key={product.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-5 py-3.5">
@@ -228,22 +278,22 @@ export default function ProductsPage() {
                           {product.hsn_code || '—'}
                         </td>
                         <td className="px-5 py-3.5 font-medium font-mono text-foreground">
-                          ₹{Number(product.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹{effectiveCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-5 py-3.5 font-medium font-mono text-foreground">
-                          ₹{Number(product.price_non_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹{nonGstPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-5 py-3.5 font-medium font-mono text-foreground">
-                          ₹{Number(product.price_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹{Number(product.price_gst || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-5 py-3.5">
-                          {Number(product.cost_price || 0) > 0 ? (
+                          {effectiveCost > 0 ? (
                             <div className="font-mono text-xs">
                               <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                ₹{(Number(product.price_non_gst) - Number(product.cost_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                ₹{profit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                               </span>
                               <span className="text-[10px] text-muted-foreground ml-1">
-                                ({Math.round(((Number(product.price_non_gst) - Number(product.cost_price)) / Number(product.cost_price)) * 100)}%)
+                                ({profitPct}%)
                               </span>
                             </div>
                           ) : (
