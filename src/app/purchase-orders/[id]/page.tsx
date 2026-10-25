@@ -174,10 +174,16 @@ export default function PurchaseOrderDetailPage() {
 
       if (receiptError) throw receiptError;
 
-      // 2. Process each line item for stock update and receipt lines
+      // 2. Calculate freight per unit and process each line item for stock update and weighted average landed cost
+      const totalFreight = Number(po?.delivery_charges) || 0;
+      const totalQty = lines.reduce((sum, l) => sum + Number(l.quantity), 0);
+      const freightPerUnit = totalQty > 0 ? totalFreight / totalQty : 0;
+
       for (const line of lines) {
         const lineBilledRate = Number(line.billed_rate) || (line.is_billed ? Number(line.unit_cost) || 0 : 0);
         const lineCashRate = Number(line.cash_rate) || (!line.is_billed ? Number(line.unit_cost) || 0 : 0);
+        const baseUnitCost = lineBilledRate + lineCashRate;
+        const landedUnitCost = baseUnitCost + freightPerUnit;
 
         // Insert into receipt_lines
         const { error: lineError } = await supabase
@@ -186,7 +192,7 @@ export default function PurchaseOrderDetailPage() {
             receipt_id: receiptData.id,
             product_id: line.product_id,
             quantity_received: line.quantity,
-            unit_cost: line.unit_cost,
+            unit_cost: landedUnitCost,
             billed_rate: lineBilledRate,
             cash_rate: lineCashRate,
             gst_amount: line.gst_amount,
@@ -195,21 +201,34 @@ export default function PurchaseOrderDetailPage() {
 
         if (lineError) throw lineError;
 
-        // Update product stock
+        // Fetch current product stock and cost price
         const { data: prodData, error: prodFetchError } = await supabase
           .from('products')
-          .select('current_stock')
+          .select('current_stock, cost_price')
           .eq('id', line.product_id)
           .single();
 
         if (prodFetchError) throw prodFetchError;
 
         const currentStock = Number(prodData?.current_stock) || 0;
+        const currentCostPrice = Number(prodData?.cost_price) || 0;
         const newStock = currentStock + line.quantity;
 
+        // Weighted average cost price calculation
+        let newCostPrice = landedUnitCost;
+        if (newStock > 0) {
+          newCostPrice = ((currentStock * currentCostPrice) + (line.quantity * landedUnitCost)) / newStock;
+        }
+        newCostPrice = Number(newCostPrice.toFixed(2));
+
+        // Update product stock and cost_price
         const { error: prodUpdateError } = await supabase
           .from('products')
-          .update({ current_stock: newStock })
+          .update({
+            current_stock: newStock,
+            cost_price: newCostPrice,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', line.product_id);
 
         if (prodUpdateError) throw prodUpdateError;
@@ -221,7 +240,7 @@ export default function PurchaseOrderDetailPage() {
             product_id: line.product_id,
             adjustment_type: 'In',
             quantity: line.quantity,
-            reason: `Quick Confirm PO: ${po?.po_number} (GRN: ${receiptNumber})`,
+            reason: `Quick Confirm PO: ${po?.po_number} (GRN: ${receiptNumber}, Landed Cost: ₹${landedUnitCost.toFixed(2)}/unit incl. freight ₹${freightPerUnit.toFixed(2)})`,
             reference_type: 'Receipt',
             reference_id: receiptData.id
           }]);

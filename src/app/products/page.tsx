@@ -187,8 +187,10 @@ export default function ProductsPage() {
                   <th className="px-5 py-3">Product & SKU</th>
                   <th className="px-5 py-3">Category</th>
                   <th className="px-5 py-3">HSN Code</th>
-                  <th className="px-5 py-3">GST Price</th>
+                  <th className="px-5 py-3">Cost Price</th>
                   <th className="px-5 py-3">Non-GST Price</th>
+                  <th className="px-5 py-3">GST Price</th>
+                  <th className="px-5 py-3">Profit Margin</th>
                   <th className="px-5 py-3 text-center">Stock Level</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
@@ -226,10 +228,27 @@ export default function ProductsPage() {
                           {product.hsn_code || '—'}
                         </td>
                         <td className="px-5 py-3.5 font-medium font-mono text-foreground">
-                          ₹{Number(product.price_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ₹{Number(product.cost_price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-5 py-3.5 font-medium font-mono text-foreground">
                           ₹{Number(product.price_non_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-5 py-3.5 font-medium font-mono text-foreground">
+                          ₹{Number(product.price_gst).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          {Number(product.cost_price || 0) > 0 ? (
+                            <div className="font-mono text-xs">
+                              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                ₹{(Number(product.price_non_gst) - Number(product.cost_price)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground ml-1">
+                                ({Math.round(((Number(product.price_non_gst) - Number(product.cost_price)) / Number(product.cost_price)) * 100)}%)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-center">
                           <div className="inline-flex items-center gap-1.5">
@@ -265,7 +284,7 @@ export default function ProductsPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">
+                    <td colSpan={9} className="px-5 py-12 text-center text-muted-foreground">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Icons.products className="w-8 h-8 text-muted-foreground/60" />
                         <p className="font-medium text-sm">No products found matching your search.</p>

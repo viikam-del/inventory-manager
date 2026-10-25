@@ -282,7 +282,8 @@ export default function ReceiptDetailPage() {
                 <th className="px-5 py-3">Product Name</th>
                 <th className="px-5 py-3">SKU</th>
                 <th className="px-5 py-3 text-right">Qty Received</th>
-                <th className="px-5 py-3 text-right">Unit Cost</th>
+                <th className="px-5 py-3 text-right">Freight / Unit</th>
+                <th className="px-5 py-3 text-right">Unit Cost (Landed)</th>
                 <th className="px-5 py-3 text-center">Billing Mode</th>
                 <th className="px-5 py-3 text-right">Input GST</th>
                 <th className="px-5 py-3 text-right">Total Line Cost</th>
@@ -293,8 +294,14 @@ export default function ReceiptDetailPage() {
                 const bRate = Number(l.billed_rate) || (l.is_billed !== false && l.cash_rate === undefined ? Number(l.unit_cost) || 0 : 0);
                 const cRate = Number(l.cash_rate) || (l.is_billed === false && l.billed_rate === undefined ? Number(l.unit_cost) || 0 : 0);
                 const isSplit = bRate > 0 && cRate > 0;
-                const totalUnitCost = bRate + cRate > 0 ? bRate + cRate : Number(l.unit_cost) || 0;
-                const lineTotal = (l.quantity_received * totalUnitCost) + Number(l.gst_amount || 0);
+                const baseCost = bRate + cRate > 0 ? bRate + cRate : Number(l.unit_cost) || 0;
+
+                // Calculate freight per unit: (total freight in receipt) / (total qty in receipt)
+                const receiptDeliveryCharges = Number(receipt?.delivery_charges || 0);
+                const receiptQty = lines.reduce((sum: number, line: any) => sum + (Number(line.quantity_received) || 0), 0);
+                const freightPerUnit = receiptQty > 0 ? receiptDeliveryCharges / receiptQty : 0;
+                const landedCost = baseCost + freightPerUnit;
+                const lineTotal = (l.quantity_received * landedCost) + Number(l.gst_amount || 0);
 
                 return (
                   <tr key={l.id} className="hover:bg-muted/30 transition-colors">
@@ -307,8 +314,11 @@ export default function ReceiptDetailPage() {
                     <td className="px-5 py-3.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                       +{l.quantity_received} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
                     </td>
-                    <td className="px-5 py-3.5 text-right font-mono text-foreground">
-                      <div>₹{totalUnitCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                    <td className="px-5 py-3.5 text-right font-mono text-orange-600 dark:text-orange-400">
+                      {freightPerUnit > 0 ? `₹${freightPerUnit.toFixed(2)}/unit` : '<span class="opacity-30">—</span>'}
+                    </td>
+                    <td className="px-5 py-3.5 text-right font-mono text-foreground font-bold">
+                      <div>₹{landedCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
                       {isSplit ? (
                         <div className="text-[10px] text-muted-foreground font-sans mt-0.5">
                           <span className="text-primary font-medium">B: ₹{bRate.toLocaleString('en-IN')}</span> + <span className="text-orange-600 dark:text-orange-400 font-medium">C: ₹{cRate.toLocaleString('en-IN')}</span>
