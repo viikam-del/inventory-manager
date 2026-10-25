@@ -315,7 +315,7 @@ export default function ReceiptDetailPage() {
                       +{l.quantity_received} <span className="text-xs font-normal text-muted-foreground">{l.products?.unit}</span>
                     </td>
                     <td className="px-5 py-3.5 text-right font-mono text-orange-600 dark:text-orange-400">
-                      {freightPerUnit > 0 ? `₹${freightPerUnit.toFixed(2)}/unit` : '<span class="opacity-30">—</span>'}
+                      {freightPerUnit > 0 ? `₹${freightPerUnit.toFixed(2)}/unit` : <span className="opacity-30">—</span>}
                     </td>
                     <td className="px-5 py-3.5 text-right font-mono text-foreground font-bold">
                       <div>₹{landedCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>

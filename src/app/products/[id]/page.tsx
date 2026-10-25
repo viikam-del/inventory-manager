@@ -746,7 +746,7 @@ export default function ProductDetailPage() {
                             <td className="px-3 py-2.5 text-right font-mono text-orange-600 dark:text-orange-400">
                               {freightPerUnit > 0
                                 ? `₹${freightPerUnit.toFixed(2)} delivery`
-                                : '<span class="opacity-30">—</span>'}
+                                : <span className="opacity-30">—</span>}
                             </td>
                             <td className="px-3 py-2.5 text-right font-mono font-bold text-primary">
                               ₹{totalLanded.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
