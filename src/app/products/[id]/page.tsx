@@ -64,14 +64,15 @@ export default function ProductDetailPage() {
         .select(`
           id, quantity, unit_cost, billed_rate, cash_rate,
           purchase_orders (
-            po_number, order_date, delivery_charges,
+            po_number, order_date, delivery_charges, is_deleted,
             suppliers ( company_name )
           )
         `)
         .eq('product_id', productId);
 
       if (!error && data) {
-        setPoCostHistory(data);
+        const activeLines = data.filter((l: any) => l.purchase_orders && !l.purchase_orders.is_deleted);
+        setPoCostHistory(activeLines);
       }
     } catch (e) {
       console.error('Failed to fetch PO cost history', e);
