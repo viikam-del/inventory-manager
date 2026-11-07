@@ -419,7 +419,7 @@ export default function SalesOrderDetailPage() {
               </Button>
             )}
 
-            {(order.status === 'Confirmed' || order.status === 'Partially Delivered') && (
+            {(order.status === 'Confirmed' || order.status === 'Partially Delivered' || order.status === 'Invoiced') && (
               <Button size="sm" variant="success" onClick={handleMarkDelivered} disabled={actionLoading} className="h-8 text-xs">
                 <Icons.delivered className="w-3.5 h-3.5 mr-1.5" /> Mark Delivered
               </Button>

@@ -191,10 +191,10 @@ export default function StaffDeliveriesPage() {
   };
 
   const pendingOrders = orders.filter(
-    o => o.status === 'Confirmed' || o.status === 'Partially Delivered'
+    o => o.status === 'Confirmed' || o.status === 'Partially Delivered' || o.status === 'Invoiced'
   );
   const completedOrders = orders.filter(
-    o => o.status === 'Delivered' || o.status === 'Invoiced'
+    o => o.status === 'Delivered'
   );
 
   const displayedOrders = (activeTab === 'pending' ? pendingOrders : completedOrders).filter(
@@ -410,7 +410,7 @@ export default function StaffDeliveriesPage() {
                     </div>
 
                     {/* Delivery Action Buttons */}
-                    {(order.status === 'Confirmed' || order.status === 'Partially Delivered') && (
+                    {(order.status === 'Confirmed' || order.status === 'Partially Delivered' || order.status === 'Invoiced') && (
                       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                         <Button
                           variant="outline"
