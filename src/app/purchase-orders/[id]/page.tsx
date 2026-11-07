@@ -353,9 +353,12 @@ export default function PurchaseOrderDetailPage() {
     }
   };
 
+  const supplierPhone = po.suppliers?.phone ? po.suppliers.phone.replace(/[^0-9]/g, '') : '';
+  const formattedSupplierPhone = supplierPhone.length === 10 ? `91${supplierPhone}` : supplierPhone;
   const whatsappMessage = encodeURIComponent(
     `*Purchase Order: ${po.po_number}*\nStatus: ${po.status}\nSupplier: ${po.suppliers?.company_name || 'N/A'}\nTotal: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(po.order_date).toLocaleDateString('en-IN')}\n\n*Ordered Items:*\n${lines.map(l => `• ${l.quantity}x ${l.products?.name}`).join('\n')}`
   );
+  const whatsappHref = formattedSupplierPhone ? `https://wa.me/${formattedSupplierPhone}?text=${whatsappMessage}` : `https://wa.me/?text=${whatsappMessage}`;
 
   return (
     <PageContainer>
@@ -377,7 +380,7 @@ export default function PurchaseOrderDetailPage() {
               className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
               <a
-                href={`https://wa.me/?text=${whatsappMessage}`}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >

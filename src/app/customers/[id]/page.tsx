@@ -223,22 +223,27 @@ export default function CustomerDetailPage() {
               <Icons.print className="w-3.5 h-3.5" /> Print / PDF
             </Button>
 
-            {customer.whatsapp && (
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
-              >
-                <a
-                  href={`https://wa.me/${customer.whatsapp}?text=${encodeURIComponent(`Hello ${customer.contact_person ? customer.contact_person : customer.company_name},\n\nHope you are doing well!\n\nRegards,\nRainbow Digital Solutions`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+            {(customer.whatsapp || customer.phone) && (() => {
+              const rawPhone = customer.whatsapp || customer.phone || '';
+              const clean = rawPhone.replace(/[^0-9]/g, '');
+              const formatted = clean.length === 10 ? `91${clean}` : clean;
+              return (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
                 >
-                  <Icons.share className="w-3.5 h-3.5" /> WhatsApp Message
-                </a>
-              </Button>
-            )}
+                  <a
+                    href={`https://wa.me/${formatted}?text=${encodeURIComponent(`Hello ${customer.contact_person ? customer.contact_person : customer.company_name},\n\nHope you are doing well!\n\nRegards,\nRainbow Digital Solutions`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icons.share className="w-3.5 h-3.5" /> WhatsApp Message
+                  </a>
+                </Button>
+              );
+            })()}
 
             <Button variant="outline" size="sm" asChild className="h-8 gap-1.5 text-xs">
               <Link href={`/customers/${customer.id}/edit`}>

@@ -319,6 +319,8 @@ export default function SupplierReturnDetailPage() {
     }
   };
 
+  const supplierPhone = returnRecord.suppliers?.phone ? returnRecord.suppliers.phone.replace(/[^0-9]/g, '') : '';
+  const formattedSupplierPhone = supplierPhone.length === 10 ? `91${supplierPhone}` : supplierPhone;
   const whatsappMessage = encodeURIComponent(
     `*DEBIT NOTE / PURCHASE RETURN: ${returnRecord.return_number}*\n` +
       `Supplier: ${returnRecord.suppliers?.company_name || 'Vendor'}\n` +
@@ -334,6 +336,7 @@ export default function SupplierReturnDetailPage() {
         )
         .join('\n')
   );
+  const whatsappHref = formattedSupplierPhone ? `https://wa.me/${formattedSupplierPhone}?text=${whatsappMessage}` : `https://wa.me/?text=${whatsappMessage}`;
 
   return (
     <PageContainer>
@@ -377,7 +380,7 @@ export default function SupplierReturnDetailPage() {
               className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
               <a
-                href={`https://wa.me/?text=${whatsappMessage}`}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >

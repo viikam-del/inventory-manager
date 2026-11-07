@@ -126,9 +126,12 @@ export default function PaymentDetailPage() {
     }
   };
 
+  const customerPhone = payment.customers?.phone ? payment.customers.phone.replace(/[^0-9]/g, '') : '';
+  const formattedCustomerPhone = customerPhone.length === 10 ? `91${customerPhone}` : customerPhone;
   const whatsappMessage = encodeURIComponent(
     `*Payment Receipt*\nCustomer: ${payment.customers?.company_name || 'Customer'}\nAmount Received: ₹${Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(payment.payment_date).toLocaleDateString('en-IN')}\nPayment Mode: ${payment.payment_method}\nRef/UTR: ${payment.reference_number || 'N/A'}\n\nThank you for your payment!`
   );
+  const whatsappHref = formattedCustomerPhone ? `https://wa.me/${formattedCustomerPhone}?text=${whatsappMessage}` : `https://wa.me/?text=${whatsappMessage}`;
 
   return (
     <PageContainer>
@@ -150,7 +153,7 @@ export default function PaymentDetailPage() {
               className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
               <a
-                href={`https://wa.me/?text=${whatsappMessage}`}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >

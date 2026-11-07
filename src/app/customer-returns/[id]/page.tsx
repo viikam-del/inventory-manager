@@ -350,6 +350,8 @@ export default function CustomerReturnDetailPage() {
     }
   };
 
+  const customerPhone = returnRecord.customers?.phone ? returnRecord.customers.phone.replace(/[^0-9]/g, '') : '';
+  const formattedCustomerPhone = customerPhone.length === 10 ? `91${customerPhone}` : customerPhone;
   const whatsappMessage = encodeURIComponent(
     `*Customer Return Note: ${returnRecord.return_number}*\n` +
       `Status: ${returnRecord.status}\n` +
@@ -365,6 +367,7 @@ export default function CustomerReturnDetailPage() {
         )
         .join('\n')
   );
+  const whatsappHref = formattedCustomerPhone ? `https://wa.me/${formattedCustomerPhone}?text=${whatsappMessage}` : `https://wa.me/?text=${whatsappMessage}`;
 
   return (
     <PageContainer>
@@ -408,7 +411,7 @@ export default function CustomerReturnDetailPage() {
               className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
               <a
-                href={`https://wa.me/?text=${whatsappMessage}`}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >

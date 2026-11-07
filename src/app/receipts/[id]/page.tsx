@@ -156,9 +156,12 @@ export default function ReceiptDetailPage() {
   const billedTaxInvoice = billedSubtotal + totalGst;
   const grandTotal = subtotal + totalGst + Number(receipt.delivery_charges || 0);
 
+  const supplierPhone = receipt.suppliers?.phone ? receipt.suppliers.phone.replace(/[^0-9]/g, '') : '';
+  const formattedSupplierPhone = supplierPhone.length === 10 ? `91${supplierPhone}` : supplierPhone;
   const whatsappMessage = encodeURIComponent(
     `*Goods Receipt (GRN): ${receipt.receipt_number}*\nStatus: ${receipt.status}\nSupplier: ${receipt.suppliers?.company_name || 'Direct Procurement'}\nTotal Valuation: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(receipt.receipt_date).toLocaleDateString('en-IN')}\n\n*Received Items:*\n${lines.map(l => `• ${l.quantity_received}x ${l.products?.name}`).join('\n')}`
   );
+  const whatsappHref = formattedSupplierPhone ? `https://wa.me/${formattedSupplierPhone}?text=${whatsappMessage}` : `https://wa.me/?text=${whatsappMessage}`;
 
   return (
     <PageContainer>
@@ -184,7 +187,7 @@ export default function ReceiptDetailPage() {
               className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
             >
               <a
-                href={`https://wa.me/?text=${whatsappMessage}`}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >

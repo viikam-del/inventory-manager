@@ -208,6 +208,17 @@ export default function CustomersPage() {
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <div className="flex justify-end items-center gap-1">
+                          {customer.phone && (() => {
+                            const clean = customer.phone.replace(/[^0-9]/g, '');
+                            const formatted = clean.length === 10 ? `91${clean}` : clean;
+                            return (
+                              <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600" title="WhatsApp Customer">
+                                <a href={`https://wa.me/${formatted}?text=${encodeURIComponent(`Hello ${customer.contact_person || customer.company_name},`)}`} target="_blank" rel="noopener noreferrer">
+                                  <Icons.phone className="w-4 h-4" />
+                                </a>
+                              </Button>
+                            );
+                          })()}
                           <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="View Customer">
                             <Link href={`/customers/${customer.id}`}>
                               <Icons.eye className="w-4 h-4" />

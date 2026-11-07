@@ -378,6 +378,11 @@ export default function SalesOrderDetailPage() {
   const totalGst = lines.reduce((acc, l) => acc + (l.gst_amount || 0), 0);
   const grandTotal = subtotal + totalGst + Number(order.delivery_charges || 0);
 
+  const customerPhone = order.customers?.phone ? order.customers.phone.replace(/[^0-9]/g, '') : '';
+  const formattedPhone = customerPhone.length === 10 ? `91${customerPhone}` : customerPhone;
+  const whatsappMsg = encodeURIComponent(`*Sales Order: ${order.order_number}*\nStatus: ${order.status}\nCustomer: ${order.customers?.company_name || 'N/A'}\nTotal: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(order.order_date).toLocaleDateString('en-IN')}\n\n*Items:*\n${lines.map(l => `• ${l.quantity}x ${l.products?.name}`).join('\n')}`);
+  const whatsappHref = formattedPhone ? `https://wa.me/${formattedPhone}?text=${whatsappMsg}` : `https://wa.me/?text=${whatsappMsg}`;
+
   return (
     <PageContainer>
       <PageHeader
@@ -405,7 +410,7 @@ export default function SalesOrderDetailPage() {
               className="h-8 text-xs bg-[#25D366]/10 text-[#128C7E] dark:text-[#25D366] hover:bg-[#25D366]/20 border-[#25D366]/30"
             >
               <a
-                href={`https://wa.me/?text=${encodeURIComponent(`*Sales Order: ${order.order_number}*\nStatus: ${order.status}\nCustomer: ${order.customers?.company_name || 'N/A'}\nTotal: ₹${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nDate: ${new Date(order.order_date).toLocaleDateString('en-IN')}\n\n*Items:*\n${lines.map(l => `• ${l.quantity}x ${l.products?.name}`).join('\n')}`)}`}
+                href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
               >

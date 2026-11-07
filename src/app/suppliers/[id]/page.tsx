@@ -205,22 +205,27 @@ export default function SupplierDetailPage() {
               <Icons.print className="w-3.5 h-3.5" /> Print / PDF
             </Button>
 
-            {supplier.whatsapp && (
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
-              >
-                <a
-                  href={`https://wa.me/${supplier.whatsapp}?text=${encodeURIComponent(`Hello ${supplier.contact_person ? supplier.contact_person : supplier.company_name},\n\nRegarding purchase orders and supply.\n\nRegards,\nRainbow Digital Solutions`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+            {(supplier.whatsapp || supplier.phone) && (() => {
+              const rawPhone = supplier.whatsapp || supplier.phone || '';
+              const clean = rawPhone.replace(/[^0-9]/g, '');
+              const formatted = clean.length === 10 ? `91${clean}` : clean;
+              return (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  className="h-8 gap-1.5 text-xs bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20 border-[#25D366]/30 dark:bg-[#25D366]/15 dark:text-[#25D366]"
                 >
-                  <Icons.share className="w-3.5 h-3.5" /> WhatsApp Message
-                </a>
-              </Button>
-            )}
+                  <a
+                    href={`https://wa.me/${formatted}?text=${encodeURIComponent(`Hello ${supplier.contact_person ? supplier.contact_person : supplier.company_name},\n\nRegarding purchase orders and supply.\n\nRegards,\nRainbow Digital Solutions`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icons.share className="w-3.5 h-3.5" /> WhatsApp Message
+                  </a>
+                </Button>
+              );
+            })()}
 
             <Button
               size="sm"

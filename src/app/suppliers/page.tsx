@@ -169,6 +169,17 @@ export default function SuppliersPage() {
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         <div className="flex justify-end items-center gap-1">
+                          {supplier.phone && (() => {
+                            const clean = supplier.phone.replace(/[^0-9]/g, '');
+                            const formatted = clean.length === 10 ? `91${clean}` : clean;
+                            return (
+                              <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-emerald-600" title="WhatsApp Supplier">
+                                <a href={`https://wa.me/${formatted}?text=${encodeURIComponent(`Hello ${supplier.contact_person || supplier.company_name},`)}`} target="_blank" rel="noopener noreferrer">
+                                  <Icons.phone className="w-4 h-4" />
+                                </a>
+                              </Button>
+                            );
+                          })()}
                           <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0 text-muted-foreground hover:text-primary" title="View Supplier">
                             <Link href={`/suppliers/${supplier.id}`}>
                               <Icons.eye className="w-4 h-4" />
