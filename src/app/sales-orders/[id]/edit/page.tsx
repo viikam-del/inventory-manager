@@ -75,31 +75,62 @@ export default function EditSalesOrderPage() {
     async function loadData() {
       setLoading(true);
       try {
-        // 1. Fetch Customers
-        const { data: custData, error: custErr } = await supabase
-          .from('customers')
-          .select('id, company_name, phone, address, gstin, is_gst_customer, credit_limit')
-          .eq('is_deleted', false)
-          .order('company_name');
-        if (custErr) throw custErr;
-        setCustomers(custData || []);
-
-        // 2. Fetch Products
-        const { data: prodData, error: prodErr } = await supabase
-          .from('products')
-          .select('id, name, sku_code, unit, price_gst, price_non_gst, gst_rate, current_stock')
-          .eq('is_deleted', false)
-          .order('name');
-        if (prodErr) throw prodErr;
-        setProducts(prodData || []);
-
-        // 3. Fetch Sales Order & Lines
+        // 3. Fetch Sales Order & Lines first so we know what customer and products are referenced
         const { data: orderData, error: orderErr } = await supabase
           .from('sales_orders')
           .select('*')
           .eq('id', orderId)
           .single();
         if (orderErr) throw orderErr;
+
+        const { data: linesData, error: linesErr } = await supabase
+          .from('sales_order_lines')
+          .select('*')
+          .eq('sales_order_id', orderId);
+        if (linesErr) throw linesErr;
+
+        // 1. Fetch Customers (active + ensure order customer is included)
+        const { data: custData, error: custErr } = await supabase
+          .from('customers')
+          .select('id, company_name, phone, address, gstin, is_gst_customer, credit_limit')
+          .eq('is_deleted', false)
+          .order('company_name');
+        if (custErr) throw custErr;
+
+        let finalCustData = custData || [];
+        if (orderData?.customer_id && !finalCustData.some(c => c.id === orderData.customer_id)) {
+          const { data: specificCust } = await supabase
+            .from('customers')
+            .select('id, company_name, phone, address, gstin, is_gst_customer, credit_limit')
+            .eq('id', orderData.customer_id)
+            .single();
+          if (specificCust) {
+            finalCustData = [specificCust, ...finalCustData];
+          }
+        }
+        setCustomers(finalCustData);
+
+        // 2. Fetch Products (active + ensure all referenced products in order lines are included)
+        const { data: prodData, error: prodErr } = await supabase
+          .from('products')
+          .select('id, name, sku_code, unit, price_gst, price_non_gst, gst_rate, current_stock')
+          .eq('is_deleted', false)
+          .order('name');
+        if (prodErr) throw prodErr;
+
+        let finalProdData = prodData || [];
+        const referencedProductIds = (linesData || []).map(l => l.product_id).filter(Boolean);
+        const missingProductIds = referencedProductIds.filter(id => !finalProdData.some(p => p.id === id));
+        if (missingProductIds.length > 0) {
+          const { data: missingProds } = await supabase
+            .from('products')
+            .select('id, name, sku_code, unit, price_gst, price_non_gst, gst_rate, current_stock')
+            .in('id', missingProductIds);
+          if (missingProds) {
+            finalProdData = [...missingProds, ...finalProdData];
+          }
+        }
+        setProducts(finalProdData);
 
         if (orderData) {
           setFormData({
@@ -118,23 +149,17 @@ export default function EditSalesOrderPage() {
           setIsGstOrder(orderData.is_gst ?? true);
 
           if (orderData.customer_id) {
-            const foundCust = custData?.find(c => c.id === orderData.customer_id);
+            const foundCust = finalCustData.find(c => c.id === orderData.customer_id);
             if (foundCust) setSelectedCustomer(foundCust);
           }
         }
-
-        const { data: linesData, error: linesErr } = await supabase
-          .from('sales_order_lines')
-          .select('*')
-          .eq('sales_order_id', orderId);
-        if (linesErr) throw linesErr;
 
         if (linesData && linesData.length > 0) {
           setLines(linesData.map(l => ({
             product_id: l.product_id,
             quantity: Number(l.quantity),
             unit_price: Number(l.unit_price),
-            gst_rate: l.gst_amount > 0 ? 18 : 0, // approximate or standard
+            gst_rate: l.gst_amount > 0 ? 18 : 0,
             gst_amount: Number(l.gst_amount || 0)
           })));
         }
