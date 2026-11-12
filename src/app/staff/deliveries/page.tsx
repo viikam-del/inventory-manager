@@ -111,7 +111,18 @@ export default function StaffDeliveriesPage() {
 
     setActionLoadingId(order.id);
     try {
-      if (order.sales_order_lines && order.sales_order_lines.length > 0) {
+      // Check if stock adjustments already exist for this order to prevent double deduction
+      const { data: existingAdjs, error: checkErr } = await supabase
+        .from('stock_adjustments')
+        .select('id')
+        .eq('reference_type', 'SalesOrder')
+        .eq('reference_id', order.id)
+        .limit(1);
+
+      if (checkErr) throw checkErr;
+      const alreadyDelivered = existingAdjs && existingAdjs.length > 0;
+
+      if (!alreadyDelivered && order.sales_order_lines && order.sales_order_lines.length > 0) {
         for (const line of order.sales_order_lines) {
           const { data: prod } = await supabase
             .from('products')

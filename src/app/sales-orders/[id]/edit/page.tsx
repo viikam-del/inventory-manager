@@ -274,6 +274,82 @@ export default function EditSalesOrderPage() {
     setSubmitting(true);
 
     try {
+      // 0. Fetch existing order status and old lines for inventory delta re-reconciliation if delivered
+      const { data: currentOrder } = await supabase
+        .from('sales_orders')
+        .select('status, order_number')
+        .eq('id', orderId)
+        .single();
+
+      const { data: oldLines } = await supabase
+        .from('sales_order_lines')
+        .select('product_id, quantity')
+        .eq('sales_order_id', orderId);
+
+      // If order is Delivered, calculate deltas and update product stock & stock_adjustments
+      if (currentOrder && currentOrder.status === 'Delivered') {
+        const oldMap = new Map<string, number>();
+        (oldLines || []).forEach(l => {
+          oldMap.set(l.product_id, (oldMap.get(l.product_id) || 0) + Number(l.quantity));
+        });
+
+        const newMap = new Map<string, number>();
+        validLines.forEach(l => {
+          newMap.set(l.product_id, (newMap.get(l.product_id) || 0) + Number(l.quantity));
+        });
+
+        const allProductIds = new Set([...oldMap.keys(), ...newMap.keys()]);
+
+        for (const productId of allProductIds) {
+          const oldQty = oldMap.get(productId) || 0;
+          const newQty = newMap.get(productId) || 0;
+          const diff = newQty - oldQty; // positive: added/increased, negative: removed/decreased
+
+          if (diff !== 0) {
+            const { data: prodData } = await supabase
+              .from('products')
+              .select('current_stock')
+              .eq('id', productId)
+              .single();
+
+            const currentStock = Number(prodData?.current_stock) || 0;
+
+            if (diff > 0) {
+              const updatedStock = currentStock - diff;
+              await supabase
+                .from('products')
+                .update({ current_stock: updatedStock })
+                .eq('id', productId);
+
+              await supabase.from('stock_adjustments').insert([{
+                product_id: productId,
+                adjustment_type: 'Out',
+                quantity: diff,
+                reason: `SO Edit Dispatch: ${currentOrder.order_number}`,
+                reference_type: 'SalesOrder',
+                reference_id: orderId
+              }]);
+            } else {
+              const restockQty = Math.abs(diff);
+              const updatedStock = currentStock + restockQty;
+              await supabase
+                .from('products')
+                .update({ current_stock: updatedStock })
+                .eq('id', productId);
+
+              await supabase.from('stock_adjustments').insert([{
+                product_id: productId,
+                adjustment_type: 'In',
+                quantity: restockQty,
+                reason: `SO Edit Restock: ${currentOrder.order_number}`,
+                reference_type: 'SalesOrder',
+                reference_id: orderId
+              }]);
+            }
+          }
+        }
+      }
+
       // 1. Update Sales Order Header
       const { error: orderError } = await supabase
         .from('sales_orders')

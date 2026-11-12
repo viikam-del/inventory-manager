@@ -121,32 +121,45 @@ export default function SalesOrderDetailPage() {
 
     setActionLoading(true);
     try {
-      // 1. Decrement product stock and create stock adjustment audit
-      for (const line of lines) {
-        const { data: prodData } = await supabase
-          .from('products')
-          .select('current_stock')
-          .eq('id', line.product_id)
-          .single();
+      // Check if stock adjustments already exist for this order to prevent double deduction
+      const { data: existingAdjs, error: checkErr } = await supabase
+        .from('stock_adjustments')
+        .select('id')
+        .eq('reference_type', 'SalesOrder')
+        .eq('reference_id', order.id)
+        .limit(1);
 
-        const currentStock = Number(prodData?.current_stock) || 0;
-        const newStock = currentStock - Number(line.quantity);
+      if (checkErr) throw checkErr;
+      const alreadyDelivered = existingAdjs && existingAdjs.length > 0;
 
-        await supabase
-          .from('products')
-          .update({ current_stock: newStock })
-          .eq('id', line.product_id);
+      if (!alreadyDelivered && lines && lines.length > 0) {
+        // 1. Decrement product stock and create stock adjustment audit
+        for (const line of lines) {
+          const { data: prodData } = await supabase
+            .from('products')
+            .select('current_stock')
+            .eq('id', line.product_id)
+            .single();
 
-        await supabase
-          .from('stock_adjustments')
-          .insert([{
-            product_id: line.product_id,
-            adjustment_type: 'Out',
-            quantity: line.quantity,
-            reason: `Delivery: ${order.order_number}`,
-            reference_type: 'SalesOrder',
-            reference_id: order.id
-          }]);
+          const currentStock = Number(prodData?.current_stock) || 0;
+          const newStock = currentStock - Number(line.quantity);
+
+          await supabase
+            .from('products')
+            .update({ current_stock: newStock })
+            .eq('id', line.product_id);
+
+          await supabase
+            .from('stock_adjustments')
+            .insert([{
+              product_id: line.product_id,
+              adjustment_type: 'Out',
+              quantity: line.quantity,
+              reason: `Delivery: ${order.order_number}`,
+              reference_type: 'SalesOrder',
+              reference_id: order.id
+            }]);
+        }
       }
 
       // 2. Update order status
